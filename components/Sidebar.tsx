@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Shield, Database, Users, AlertTriangle,
-  FileText, CheckSquare, BarChart3, Scale, ChevronRight
+  FileText, CheckSquare, BarChart3, Scale, ChevronRight, ScanSearch
 } from 'lucide-react';
 
 const navItems = [
@@ -15,6 +15,10 @@ const navItems = [
   { href: '/privacy-notice', label: 'Privacy Notice', icon: FileText },
   { href: '/checklist', label: 'Compliance Checklist', icon: CheckSquare },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
+];
+
+const toolItems = [
+  { href: '/scanner', label: 'DPDP GAP Scanner', icon: ScanSearch },
 ];
 
 export default function Sidebar() {
@@ -35,7 +39,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mb-2">Main</div>
         {navItems.map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href;
@@ -50,6 +54,27 @@ export default function Sidebar() {
               <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
               <span className="flex-1">{label}</span>
               {isActive && <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />}
+            </Link>
+          );
+        })}
+
+        <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-2 pt-3 border-t border-slate-100">Tools</div>
+        {toolItems.map(({ href, label, icon: Icon }) => {
+          const isActive = pathname === href;
+          return (
+            <Link key={href} href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-indigo-50 text-indigo-700'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-400'}`} />
+              <span className="flex-1">{label}</span>
+              {isActive
+                ? <ChevronRight className="w-3.5 h-3.5 text-indigo-400" />
+                : <span className="text-xs bg-indigo-100 text-indigo-600 font-semibold px-1.5 py-0.5 rounded-full">Free</span>
+              }
             </Link>
           );
         })}
