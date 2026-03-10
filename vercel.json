@@ -1,6 +1,3 @@
 {
-  "buildCommand": "cd dpdp-tool && npm install && npm run build",
-  "outputDirectory": "dpdp-tool/.next",
-  "installCommand": "cd dpdp-tool && npm install",
-  "framework": "nextjs"
+  "rootDirectory": "dpdp-tool"
 }
