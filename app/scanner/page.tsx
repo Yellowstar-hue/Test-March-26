@@ -4,7 +4,8 @@ import { useState, useRef } from 'react';
 import {
   Search, Shield, FileText, Scale, Lock, Users, User, Clock,
   Baby, Globe, CheckCircle, XCircle, AlertCircle, ChevronDown,
-  ChevronUp, Info, AlertTriangle, ExternalLink, Loader2,
+  ChevronUp, AlertTriangle, ExternalLink, Loader2, Zap,
+  Target, Activity, TrendingUp, Info,
 } from 'lucide-react';
 import type { ScanResult, CategoryResult, GapItem, SecurityHeader } from '../api/scan/route';
 
@@ -19,52 +20,60 @@ function scoreColor(score: number, max: number) {
 
 function levelConfig(level: string) {
   switch (level) {
-    case 'Excellent':   return { bg: 'bg-green-50',  text: 'text-green-700',  border: 'border-green-200',  badge: 'bg-green-100 text-green-700',  hex: '#16a34a' };
-    case 'Good':        return { bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200',   badge: 'bg-blue-100 text-blue-700',    hex: '#2563eb' };
-    case 'Moderate':    return { bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-200',  badge: 'bg-amber-100 text-amber-700',  hex: '#d97706' };
-    case 'Needs Improvement': return { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', badge: 'bg-orange-100 text-orange-700', hex: '#ea580c' };
-    default:            return { bg: 'bg-red-50',    text: 'text-red-700',    border: 'border-red-200',    badge: 'bg-red-100 text-red-700',      hex: '#dc2626' };
+    case 'Excellent':         return { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.25)',   hex: '#22c55e' };
+    case 'Good':              return { color: '#0ea5e9', bg: 'rgba(14,165,233,0.1)',  border: 'rgba(14,165,233,0.25)',  hex: '#0ea5e9' };
+    case 'Moderate':          return { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.25)', hex: '#f59e0b' };
+    case 'Needs Improvement': return { color: '#f97316', bg: 'rgba(249,115,22,0.1)', border: 'rgba(249,115,22,0.25)', hex: '#f97316' };
+    default:                  return { color: '#ef4444', bg: 'rgba(239,68,68,0.1)',  border: 'rgba(239,68,68,0.25)',  hex: '#ef4444' };
   }
 }
 
 function severityConfig(s: string) {
   switch (s) {
-    case 'Critical': return { bg: 'bg-red-50', text: 'text-red-700', badge: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
-    case 'High':     return { bg: 'bg-orange-50', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' };
-    case 'Medium':   return { bg: 'bg-amber-50', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' };
-    default:         return { bg: 'bg-blue-50', text: 'text-blue-700', badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-400' };
+    case 'Critical': return { bg: 'rgba(239,68,68,0.08)',   text: '#ef4444', badge: 'rgba(239,68,68,0.1)',   badgeText: '#ef4444',   badgeBorder: 'rgba(239,68,68,0.2)',   dot: '#ef4444' };
+    case 'High':     return { bg: 'rgba(249,115,22,0.08)',  text: '#f97316', badge: 'rgba(249,115,22,0.1)',  badgeText: '#f97316',   badgeBorder: 'rgba(249,115,22,0.2)',  dot: '#f97316' };
+    case 'Medium':   return { bg: 'rgba(245,158,11,0.08)',  text: '#f59e0b', badge: 'rgba(245,158,11,0.1)',  badgeText: '#f59e0b',   badgeBorder: 'rgba(245,158,11,0.2)',  dot: '#f59e0b' };
+    default:         return { bg: 'rgba(14,165,233,0.08)',  text: '#0ea5e9', badge: 'rgba(14,165,233,0.1)',  badgeText: '#0ea5e9',   badgeBorder: 'rgba(14,165,233,0.2)',  dot: '#0ea5e9' };
   }
 }
 
 // ---- Circular score gauge ----
 function ScoreGauge({ score, max, level }: { score: number; max: number; level: string }) {
   const cfg = levelConfig(level);
-  const radius = 70;
-  const stroke = 14;
+  const radius = 72;
+  const stroke = 10;
   const circ = 2 * Math.PI * radius;
   const pct = Math.min(score / max, 1);
   const dash = circ * pct;
-  const size = (radius + stroke) * 2;
+  const size = (radius + stroke + 4) * 2;
 
   return (
     <div className="flex flex-col items-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke="#e2e8f0" strokeWidth={stroke}
-        />
-        <circle
-          cx={size / 2} cy={size / 2} r={radius}
-          fill="none" stroke={cfg.hex} strokeWidth={stroke}
-          strokeDasharray={`${dash} ${circ}`}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          style={{ transition: 'stroke-dasharray 0.6s ease' }}
-        />
-        <text x={size / 2} y={size / 2 - 6} textAnchor="middle" fontSize="36" fontWeight="bold" fill="#1e293b">{score}</text>
-        <text x={size / 2} y={size / 2 + 16} textAnchor="middle" fontSize="13" fill="#64748b">/ {max} pts</text>
-      </svg>
-      <span className={`mt-1 text-sm font-semibold px-3 py-1 rounded-full ${cfg.badge}`}>{level}</span>
+      <div className="relative">
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+          {/* Track */}
+          <circle
+            cx={size / 2} cy={size / 2} r={radius}
+            fill="none" stroke="rgba(15,23,42,0.08)" strokeWidth={stroke}
+          />
+          {/* Glow layer */}
+          <circle
+            cx={size / 2} cy={size / 2} r={radius}
+            fill="none" stroke={cfg.hex} strokeWidth={stroke}
+            strokeDasharray={`${dash} ${circ}`}
+            strokeLinecap="round"
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            style={{ filter: `drop-shadow(0 0 6px ${cfg.hex}66)`, transition: 'stroke-dasharray 0.8s cubic-bezier(0.4,0,0.2,1)' }}
+          />
+          {/* Score text */}
+          <text x={size / 2} y={size / 2 - 8} textAnchor="middle" fontSize="40" fontWeight="800" fill="#0f172a">{score}</text>
+          <text x={size / 2} y={size / 2 + 12} textAnchor="middle" fontSize="12" fill="#94a3b8" fontWeight="500">/ {max} pts</text>
+        </svg>
+      </div>
+      <span className="mt-3 text-xs font-bold px-3 py-1.5 rounded-full"
+        style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
+        {level}
+      </span>
     </div>
   );
 }
@@ -90,7 +99,7 @@ function CategoryIcon({ id, className }: { id: string; className?: string }) {
 const ASSESS_ITEMS = [
   { id: 'consent',    name: 'Consent Notice & Mechanism', section: 'Section 6 & 7', desc: 'Freely given, specific, informed consent before processing with withdrawal option', pts: 25, bonus: false },
   { id: 'privacy',    name: 'Privacy Notice',             section: 'Section 5',     desc: 'Accessible notice covering data categories, purposes, and data principal rights', pts: 20, bonus: false },
-  { id: 'grievance',  name: 'Grievance Redressal',        section: 'Section 13',    desc: 'Designated grievance officer and an accessible complaint mechanism for data principals', pts: 15, bonus: false },
+  { id: 'grievance',  name: 'Grievance Redressal',        section: 'Section 13',    desc: 'Designated grievance officer and an accessible complaint mechanism', pts: 15, bonus: false },
   { id: 'security',   name: 'Data Security Measures',     section: 'Section 8',     desc: 'HTTPS encryption and HTTP security headers protecting personal data in transit', pts: 15, bonus: false },
   { id: 'rights',     name: 'Data Principal Rights',      section: 'Section 11–14', desc: 'Access, correction, erasure, portability — communicated and actionable', pts: 10, bonus: false },
   { id: 'dpo',        name: 'Data Fiduciary Contact / DPO', section: 'DPDP Rules', desc: 'Designated DPO with published contact details for privacy queries', pts: 10, bonus: false },
@@ -106,54 +115,68 @@ function CategoryCard({ cat }: { cat: CategoryResult }) {
   const pct = Math.round((cat.score / cat.maxScore) * 100);
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <div className="rounded-xl overflow-hidden transition-all"
+      style={{ border: '1px solid rgba(15,23,42,0.08)', background: '#fff' }}>
       <button
-        className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center gap-4 px-5 py-4 text-left transition-colors"
+        style={{ cursor: 'pointer' }}
         onClick={() => setOpen(v => !v)}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f8fafc'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = open ? '#f8fafc' : '#fff'}
       >
-        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
-          <CategoryIcon id={cat.id} className="w-5 h-5 text-indigo-600" />
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'rgba(14,165,233,0.08)' }}>
+          <CategoryIcon id={cat.id} className="w-4.5 h-4.5" style={{ color: '#0ea5e9' } as React.CSSProperties} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-slate-800 text-sm">{cat.name}</span>
             {cat.isBonus && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Bonus</span>
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
+                Bonus
+              </span>
             )}
-            <span className="text-xs text-slate-400">{cat.dpdpSection}</span>
+            <span className="text-xs font-mono" style={{ color: '#94a3b8' }}>{cat.dpdpSection}</span>
           </div>
-          <div className="mt-1.5 flex items-center gap-3">
-            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden max-w-48">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${pct}%`, backgroundColor: color }}
-              />
+          <div className="mt-2 flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full overflow-hidden max-w-48"
+              style={{ background: 'rgba(15,23,42,0.06)' }}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, background: color, boxShadow: `0 0 6px ${color}44` }} />
             </div>
             <span className="text-xs font-bold" style={{ color }}>{cat.score}/{cat.maxScore}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {cat.status === 'pass' && <CheckCircle className="w-4 h-4 text-green-500" />}
-          {cat.status === 'partial' && <AlertCircle className="w-4 h-4 text-amber-500" />}
-          {cat.status === 'fail' && <XCircle className="w-4 h-4 text-red-500" />}
-          {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          {cat.status === 'pass' && <CheckCircle className="w-4 h-4" style={{ color: '#22c55e' }} />}
+          {cat.status === 'partial' && <AlertCircle className="w-4 h-4" style={{ color: '#f59e0b' }} />}
+          {cat.status === 'fail' && <XCircle className="w-4 h-4" style={{ color: '#ef4444' }} />}
+          {open
+            ? <ChevronUp className="w-4 h-4 text-slate-400" />
+            : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </div>
       </button>
 
       {open && (
-        <div className="px-5 pb-4 border-t border-slate-100 pt-3">
-          <p className="text-sm text-slate-500 mb-3">{cat.description}</p>
+        <div className="px-5 pb-5 pt-3" style={{ borderTop: '1px solid rgba(15,23,42,0.06)', background: '#fafafa' }}>
+          <p className="text-xs text-slate-500 mb-3 leading-relaxed">{cat.description}</p>
           <div className="space-y-2">
             {cat.checks.map((chk, i) => (
-              <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${chk.found ? 'bg-green-50' : 'bg-red-50'}`}>
+              <div key={i} className="flex items-start gap-3 p-3 rounded-lg"
+                style={{
+                  background: chk.found ? 'rgba(34,197,94,0.06)' : 'rgba(239,68,68,0.06)',
+                  border: chk.found ? '1px solid rgba(34,197,94,0.12)' : '1px solid rgba(239,68,68,0.12)',
+                }}>
                 {chk.found
-                  ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                  : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />}
+                  ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#22c55e' }} />
+                  : <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />}
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-700">{chk.label}</div>
-                  <div className={`text-xs mt-0.5 ${chk.found ? 'text-green-600' : 'text-red-600'}`}>{chk.detail}</div>
+                  <div className="text-xs font-semibold text-slate-700">{chk.label}</div>
+                  <div className="text-xs mt-0.5" style={{ color: chk.found ? '#16a34a' : '#dc2626' }}>{chk.detail}</div>
                 </div>
-                <span className={`text-xs font-bold flex-shrink-0 ${chk.found ? 'text-green-600' : 'text-slate-400'}`}>
+                <span className="text-xs font-bold flex-shrink-0"
+                  style={{ color: chk.found ? '#16a34a' : '#94a3b8' }}>
                   {chk.found ? `+${chk.points}` : `0/${chk.points}`}
                 </span>
               </div>
@@ -173,31 +196,46 @@ function GapRow({ gap, index }: { gap: GapItem; index: number }) {
   return (
     <>
       <tr
-        className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
+        className="transition-colors cursor-pointer"
+        style={{ borderBottom: '1px solid rgba(15,23,42,0.05)' }}
         onClick={() => setOpen(v => !v)}
+        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f8fafc'}
+        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = open ? 'rgba(245,158,11,0.03)' : 'transparent'}
       >
-        <td className="px-4 py-3 text-sm text-slate-500 font-mono">{index + 1}</td>
+        <td className="px-4 py-3 text-xs text-slate-400 font-mono">{String(index + 1).padStart(2, '0')}</td>
         <td className="px-4 py-3">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${cfg.badge}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full"
+            style={{ background: cfg.badge, color: cfg.badgeText, border: `1px solid ${cfg.badgeBorder}` }}>
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: cfg.dot, boxShadow: `0 0 4px ${cfg.dot}` }} />
             {gap.severity}
           </span>
         </td>
         <td className="px-4 py-3 text-sm font-medium text-slate-700">{gap.gap}</td>
-        <td className="px-4 py-3 text-xs text-slate-500">{gap.category}</td>
-        <td className="px-4 py-3 text-xs font-mono text-indigo-600">{gap.dpdpSection}</td>
+        <td className="px-4 py-3 text-xs text-slate-400">{gap.category}</td>
         <td className="px-4 py-3">
-          {open ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          <span className="text-xs font-mono font-semibold px-2 py-1 rounded-lg"
+            style={{ background: 'rgba(14,165,233,0.08)', color: '#0ea5e9' }}>
+            {gap.dpdpSection}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          {open
+            ? <ChevronUp className="w-4 h-4 text-slate-400" />
+            : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </td>
       </tr>
       {open && (
-        <tr className="bg-amber-50">
+        <tr style={{ background: 'rgba(245,158,11,0.04)' }}>
           <td colSpan={6} className="px-4 py-3">
-            <div className="flex gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex gap-3 items-start">
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{ background: 'rgba(245,158,11,0.15)' }}>
+                <AlertTriangle className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} />
+              </div>
               <div>
-                <div className="text-xs font-semibold text-amber-700 mb-0.5">Recommended Action</div>
-                <div className="text-sm text-amber-900">{gap.recommendation}</div>
+                <div className="text-xs font-bold mb-1" style={{ color: '#92400e' }}>Recommended Action</div>
+                <div className="text-sm text-slate-700 leading-relaxed">{gap.recommendation}</div>
               </div>
             </div>
           </td>
@@ -220,20 +258,16 @@ export default function ScannerPage() {
   async function handleScan(e: React.FormEvent) {
     e.preventDefault();
     if (!domain.trim()) return;
-
     setScanning(true);
     setError('');
     setResult(null);
-
     try {
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: domain.trim(), email: email.trim() || undefined }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error ?? 'Scan failed. Please try again.');
       } else {
@@ -251,44 +285,97 @@ export default function ScannerPage() {
   const criticalGaps = result?.gaps.filter(g => g.severity === 'Critical').length ?? 0;
   const highGaps = result?.gaps.filter(g => g.severity === 'High').length ?? 0;
 
+  const scanSteps = ['Fetching homepage', 'Locating privacy notice', 'Checking consent mechanisms', 'Analysing security headers', 'Generating GAP report'];
+
   return (
     <div className="max-w-5xl mx-auto">
 
       {/* ---- Hero ---- */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-4 border border-indigo-100">
-          <Shield className="w-3.5 h-3.5" />
+      <div className="text-center mb-10">
+        {/* Badge */}
+        <div className="inline-flex items-center gap-2 mb-5 text-xs font-bold px-4 py-2 rounded-full"
+          style={{ background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '1px solid rgba(14,165,233,0.2)' }}>
+          <Zap className="w-3.5 h-3.5" />
           Free DPDP Readiness Tool
+          <span className="w-1 h-1 rounded-full bg-sky-400/60" />
+          <Activity className="w-3 h-3 opacity-60" />
+          Live Scanner
         </div>
-        <h1 className="text-3xl font-bold text-slate-800 mb-3">
-          DPDP Compliance <span className="text-indigo-600">GAP Assessment</span>
+
+        <h1 className="text-4xl font-black text-slate-900 mb-4 tracking-tight leading-tight">
+          DPDP Compliance{' '}
+          <span style={{
+            background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>
+            GAP Assessment
+          </span>
         </h1>
         <p className="text-slate-500 max-w-2xl mx-auto text-base leading-relaxed">
           Instantly analyse your website against India&apos;s{' '}
           <span className="font-semibold text-slate-700">Digital Personal Data Protection Act 2023</span>.
-          Receive a readiness score, identify compliance gaps, and get actionable remediation guidance.
+          Get a readiness score, identify compliance gaps, and receive actionable remediation guidance.
         </p>
       </div>
 
       {/* ---- Scan form ---- */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mb-10">
+      <div className="rounded-2xl p-6 mb-10"
+        style={{
+          background: '#fff',
+          border: '1px solid rgba(15,23,42,0.08)',
+          boxShadow: '0 4px 24px rgba(14,165,233,0.08), 0 1px 3px rgba(15,23,42,0.06)',
+        }}>
+        {/* Form header */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #0ea5e9, #0284c7)' }}>
+            <Target className="w-4.5 h-4.5 text-white" />
+          </div>
+          <div>
+            <div className="font-bold text-slate-900 text-sm">Website Scanner</div>
+            <div className="text-xs text-slate-400">Automated DPDP compliance analysis</div>
+          </div>
+        </div>
+
         <form onSubmit={handleScan} className="space-y-3">
           <div className="flex gap-3">
             <div className="flex-1 relative">
-              <Globe className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Globe className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
               <input
                 type="text"
                 value={domain}
                 onChange={e => setDomain(e.target.value)}
                 placeholder="Enter website URL (e.g., example.com or https://example.com)"
-                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition"
+                className="w-full pl-10 pr-4 py-3 text-sm rounded-xl transition-all outline-none"
+                style={{
+                  border: '1.5px solid rgba(15,23,42,0.1)',
+                  background: '#f8fafc',
+                  color: '#0f172a',
+                }}
+                onFocus={e => {
+                  (e.target as HTMLElement).style.borderColor = '#0ea5e9';
+                  (e.target as HTMLElement).style.boxShadow = '0 0 0 3px rgba(14,165,233,0.1)';
+                  (e.target as HTMLElement).style.background = '#fff';
+                }}
+                onBlur={e => {
+                  (e.target as HTMLElement).style.borderColor = 'rgba(15,23,42,0.1)';
+                  (e.target as HTMLElement).style.boxShadow = 'none';
+                  (e.target as HTMLElement).style.background = '#f8fafc';
+                }}
                 disabled={scanning}
               />
             </div>
             <button
               type="submit"
               disabled={scanning || !domain.trim()}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-2 text-sm font-bold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                color: '#fff',
+                boxShadow: '0 2px 8px rgba(14,165,233,0.35)',
+              }}
             >
               {scanning ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> Analysing…</>
@@ -298,7 +385,7 @@ export default function ScannerPage() {
             </button>
           </div>
           <div className="relative">
-            <svg className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="#94a3b8" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
             <input
@@ -306,14 +393,26 @@ export default function ScannerPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="Email address (optional — receive a copy of your report)"
-              className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition"
+              className="w-full pl-10 pr-4 py-3 text-sm rounded-xl transition-all outline-none"
+              style={{ border: '1.5px solid rgba(15,23,42,0.1)', background: '#f8fafc', color: '#0f172a' }}
+              onFocus={e => {
+                (e.target as HTMLElement).style.borderColor = '#0ea5e9';
+                (e.target as HTMLElement).style.boxShadow = '0 0 0 3px rgba(14,165,233,0.1)';
+                (e.target as HTMLElement).style.background = '#fff';
+              }}
+              onBlur={e => {
+                (e.target as HTMLElement).style.borderColor = 'rgba(15,23,42,0.1)';
+                (e.target as HTMLElement).style.boxShadow = 'none';
+                (e.target as HTMLElement).style.background = '#f8fafc';
+              }}
               disabled={scanning}
             />
           </div>
         </form>
 
         {error && (
-          <div className="mt-4 flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3">
+          <div className="mt-4 flex items-start gap-2.5 text-sm rounded-xl p-3.5"
+            style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', color: '#dc2626' }}>
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             {error}
           </div>
@@ -321,19 +420,30 @@ export default function ScannerPage() {
 
         {scanning && (
           <div className="mt-5">
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-              <span>Fetching and analysing website…</span>
-              <span>Please wait</span>
+            <div className="flex items-center justify-between text-xs mb-2" style={{ color: '#94a3b8' }}>
+              <span className="font-medium" style={{ color: '#0ea5e9' }}>Scanning in progress…</span>
+              <span>Please wait up to 30s</span>
             </div>
-            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 rounded-full animate-pulse" style={{ width: '70%' }} />
+            {/* Animated progress bar */}
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(14,165,233,0.1)' }}>
+              <div className="h-full rounded-full"
+                style={{
+                  width: '65%',
+                  background: 'linear-gradient(90deg, #0ea5e9, #38bdf8, #0ea5e9)',
+                  backgroundSize: '200% 100%',
+                  animation: 'shimmer 1.5s infinite',
+                }} />
             </div>
-            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-xs text-slate-400">
-              {['Fetching homepage', 'Locating privacy notice', 'Checking consent mechanisms', 'Analysing security headers', 'Generating GAP report'].map((s, i) => (
-                <span key={i} className="flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  {s}
-                </span>
+            {/* Step indicators */}
+            <div className="grid grid-cols-5 gap-2 mt-4">
+              {scanSteps.map((s, i) => (
+                <div key={i} className="flex flex-col items-center gap-1.5 text-center">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center"
+                    style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.2)' }}>
+                    <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#0ea5e9' }} />
+                  </div>
+                  <span className="text-xs leading-tight" style={{ color: '#94a3b8' }}>{s}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -343,25 +453,42 @@ export default function ScannerPage() {
       {/* ---- What We Assess ---- */}
       {!result && (
         <div className="mb-10">
-          <h2 className="text-xl font-bold text-slate-800 text-center mb-2">What We Assess</h2>
-          <p className="text-slate-500 text-sm text-center mb-6">7 scored categories (100 pts) + 2 bonus checks — aligned to DPDP Act 2023 obligations</p>
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">What We Assess</h2>
+            <p className="text-sm text-slate-400">7 scored categories (100 pts) + 2 bonus checks — aligned to DPDP Act 2023 obligations</p>
+          </div>
           <div className="grid grid-cols-3 gap-4">
             {ASSESS_ITEMS.map(item => (
-              <div key={item.id} className="bg-white border border-slate-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
-                <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center mb-3">
-                  <CategoryIcon id={item.id} className="w-5 h-5 text-indigo-600" />
-                </div>
-                <div className="flex items-start justify-between gap-1 mb-1">
-                  <h3 className="text-sm font-semibold text-slate-800 leading-tight">{item.name}</h3>
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed mb-3">{item.desc}</p>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-indigo-600 font-medium">{item.section}</span>
+              <div key={item.id}
+                className="rounded-xl p-4 transition-all group"
+                style={{
+                  background: '#fff',
+                  border: '1px solid rgba(15,23,42,0.08)',
+                  boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(14,165,233,0.1), 0 1px 3px rgba(15,23,42,0.06)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 1px 3px rgba(15,23,42,0.04)'}
+              >
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: item.bonus ? 'rgba(139,92,246,0.08)' : 'rgba(14,165,233,0.08)' }}>
+                    <CategoryIcon id={item.id} className="w-4.5 h-4.5"
+                      style={{ color: item.bonus ? '#8b5cf6' : '#0ea5e9' } as React.CSSProperties} />
+                  </div>
                   {item.bonus
-                    ? <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">Bonus +{item.pts}</span>
-                    : <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">{item.pts} pts</span>
+                    ? <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}>
+                        Bonus +{item.pts}
+                      </span>
+                    : <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{ background: 'rgba(15,23,42,0.05)', color: '#64748b' }}>
+                        {item.pts} pts
+                      </span>
                   }
                 </div>
+                <h3 className="text-sm font-bold text-slate-800 mb-1.5 leading-tight">{item.name}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed mb-3">{item.desc}</p>
+                <span className="text-xs font-semibold" style={{ color: '#0ea5e9' }}>{item.section}</span>
               </div>
             ))}
           </div>
@@ -370,13 +497,14 @@ export default function ScannerPage() {
 
       {/* ---- Results ---- */}
       {result && cfg && (
-        <div ref={resultRef} className="space-y-6">
+        <div ref={resultRef} className="space-y-5">
 
-          {/* Fetch warning */}
+          {/* Partial scan warning */}
           {result.fetchError && (
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl p-4">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <div>
+            <div className="flex items-start gap-3 text-sm rounded-xl p-4"
+              style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
+              <div style={{ color: '#92400e' }}>
                 <span className="font-semibold">Partial scan: </span>
                 {result.fetchError} — results may be incomplete. Some websites block automated scanners.
               </div>
@@ -384,68 +512,75 @@ export default function ScannerPage() {
           )}
 
           {/* Score overview */}
-          <div className={`bg-white border ${cfg.border} rounded-2xl p-6`}>
-            <div className="flex flex-col sm:flex-row items-center gap-8">
+          <div className="rounded-2xl p-6 overflow-hidden relative"
+            style={{ background: '#fff', border: `1px solid ${cfg.border}`, boxShadow: `0 4px 24px ${cfg.color}15` }}>
+            {/* Background accent */}
+            <div className="absolute top-0 right-0 w-48 h-48 rounded-full opacity-5 pointer-events-none"
+              style={{ background: `radial-gradient(circle, ${cfg.hex} 0%, transparent 70%)`, transform: 'translate(20%, -20%)' }} />
+
+            <div className="relative flex flex-col sm:flex-row items-center gap-8">
               <ScoreGauge score={result.overallScore} max={result.maxBaseScore} level={result.complianceLevel} />
 
               <div className="flex-1">
-                <div className="flex items-center gap-3 mb-1">
-                  <h2 className="text-xl font-bold text-slate-800">Readiness Assessment Complete</h2>
-                </div>
-                <div className="flex items-center gap-2 mb-4">
-                  <ExternalLink className="w-4 h-4 text-slate-400" />
-                  <a href={result.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 text-sm hover:underline font-medium">{result.domain}</a>
-                  <span className="text-slate-300">•</span>
+                <h2 className="text-xl font-black text-slate-900 mb-1">Readiness Assessment Complete</h2>
+                <div className="flex items-center gap-2 mb-5">
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                  <a href={result.url} target="_blank" rel="noopener noreferrer"
+                    className="text-sm font-semibold hover:underline" style={{ color: '#0ea5e9' }}>
+                    {result.domain}
+                  </a>
+                  <span className="text-slate-200">•</span>
                   <span className="text-xs text-slate-400">Scanned in {(result.durationMs / 1000).toFixed(1)}s</span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="bg-slate-50 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-bold text-slate-800">{result.overallScore}</div>
-                    <div className="text-xs text-slate-500">Base Score</div>
-                    <div className="text-xs text-slate-400">of {result.maxBaseScore}</div>
-                  </div>
-                  <div className="bg-purple-50 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-bold text-purple-700">+{result.bonusScore}</div>
-                    <div className="text-xs text-slate-500">Bonus Points</div>
-                    <div className="text-xs text-slate-400">of 15</div>
-                  </div>
-                  <div className="bg-red-50 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-bold text-red-600">{criticalGaps}</div>
-                    <div className="text-xs text-slate-500">Critical Gaps</div>
-                    <div className="text-xs text-slate-400">immediate action</div>
-                  </div>
-                  <div className="bg-orange-50 rounded-xl p-3 text-center">
-                    <div className="text-2xl font-bold text-orange-600">{highGaps}</div>
-                    <div className="text-xs text-slate-500">High Gaps</div>
-                    <div className="text-xs text-slate-400">priority action</div>
-                  </div>
+                  {[
+                    { label: 'Base Score', value: result.overallScore, sub: `of ${result.maxBaseScore}`, color: cfg.color, bg: cfg.bg },
+                    { label: 'Bonus Points', value: `+${result.bonusScore}`, sub: 'of 15', color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)' },
+                    { label: 'Critical Gaps', value: criticalGaps, sub: 'immediate action', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
+                    { label: 'High Gaps', value: highGaps, sub: 'priority action', color: '#f97316', bg: 'rgba(249,115,22,0.08)' },
+                  ].map(({ label, value, sub, color, bg }) => (
+                    <div key={label} className="rounded-xl p-3 text-center"
+                      style={{ background: bg, border: `1px solid ${color}22` }}>
+                      <div className="text-2xl font-black" style={{ color }}>{value}</div>
+                      <div className="text-xs font-semibold text-slate-600 mt-0.5">{label}</div>
+                      <div className="text-xs text-slate-400">{sub}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-            <div className="flex border-b border-slate-200">
+          <div className="rounded-2xl overflow-hidden"
+            style={{ background: '#fff', border: '1px solid rgba(15,23,42,0.08)', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
+            {/* Tab bar */}
+            <div className="flex" style={{ borderBottom: '1px solid rgba(15,23,42,0.08)' }}>
               {([
-                { key: 'categories', label: `Category Breakdown`, count: result.categories.length },
-                { key: 'gaps', label: 'GAP Analysis', count: result.gaps.length },
-                { key: 'headers', label: 'Security Headers', count: result.securityHeaders.length },
+                { key: 'categories', label: 'Category Breakdown', icon: TrendingUp, count: result.categories.length },
+                { key: 'gaps', label: 'GAP Analysis', icon: AlertTriangle, count: result.gaps.length },
+                { key: 'headers', label: 'Security Headers', icon: Lock, count: result.securityHeaders.length },
               ] as const).map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 py-3.5 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                    activeTab === tab.key
-                      ? 'text-indigo-700 border-b-2 border-indigo-600 bg-indigo-50/50'
-                      : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                  }`}
+                  className="flex-1 py-3.5 text-sm font-semibold flex items-center justify-center gap-2 transition-all"
+                  style={{
+                    color: activeTab === tab.key ? '#0ea5e9' : '#94a3b8',
+                    borderBottom: activeTab === tab.key ? '2px solid #0ea5e9' : '2px solid transparent',
+                    background: activeTab === tab.key ? 'rgba(14,165,233,0.03)' : 'transparent',
+                  }}
                 >
+                  <tab.icon className="w-3.5 h-3.5" />
                   {tab.label}
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
-                    activeTab === tab.key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
-                  }`}>{tab.count}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
+                    style={{
+                      background: activeTab === tab.key ? 'rgba(14,165,233,0.12)' : 'rgba(15,23,42,0.05)',
+                      color: activeTab === tab.key ? '#0ea5e9' : '#94a3b8',
+                    }}>
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -453,19 +588,19 @@ export default function ScannerPage() {
             {/* Category Breakdown */}
             {activeTab === 'categories' && (
               <div className="p-5 space-y-3">
-                {/* Summary bar */}
-                <div className="flex gap-4 text-xs text-slate-500 mb-4">
+                <div className="flex items-center gap-4 text-xs mb-4">
                   {[
-                    { label: 'Pass', count: result.categories.filter(c => c.status === 'pass').length, cls: 'text-green-600' },
-                    { label: 'Partial', count: result.categories.filter(c => c.status === 'partial').length, cls: 'text-amber-600' },
-                    { label: 'Fail', count: result.categories.filter(c => c.status === 'fail').length, cls: 'text-red-600' },
+                    { label: 'Pass', count: result.categories.filter(c => c.status === 'pass').length, color: '#22c55e' },
+                    { label: 'Partial', count: result.categories.filter(c => c.status === 'partial').length, color: '#f59e0b' },
+                    { label: 'Fail', count: result.categories.filter(c => c.status === 'fail').length, color: '#ef4444' },
                   ].map(s => (
-                    <span key={s.label} className={`flex items-center gap-1 font-medium ${s.cls}`}>
+                    <span key={s.label} className="flex items-center gap-1.5 font-semibold" style={{ color: s.color }}>
+                      <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
                       {s.label}: {s.count}
                     </span>
                   ))}
-                  <span className="text-slate-300">•</span>
-                  <span>Click any category to expand checks</span>
+                  <span className="text-slate-300">·</span>
+                  <span className="text-slate-400">Click any category to expand checks</span>
                 </div>
                 {result.categories.map(cat => <CategoryCard key={cat.id} cat={cat} />)}
               </div>
@@ -475,16 +610,19 @@ export default function ScannerPage() {
             {activeTab === 'gaps' && (
               <div className="p-5">
                 {result.gaps.length === 0 ? (
-                  <div className="text-center py-12">
-                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                    <div className="text-lg font-semibold text-slate-800">No gaps detected</div>
-                    <div className="text-slate-500 text-sm mt-1">Your website passed all assessed DPDP compliance checks</div>
+                  <div className="text-center py-14">
+                    <div className="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
+                      style={{ background: 'rgba(34,197,94,0.1)' }}>
+                      <CheckCircle className="w-8 h-8" style={{ color: '#22c55e' }} />
+                    </div>
+                    <div className="text-lg font-bold text-slate-900">No gaps detected</div>
+                    <div className="text-sm text-slate-400 mt-1">Your website passed all assessed DPDP compliance checks</div>
                   </div>
                 ) : (
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <p className="text-sm text-slate-500">
-                        <span className="font-semibold text-slate-700">{result.gaps.length} compliance gaps</span> identified — click any row to see recommended remediation
+                        <span className="font-bold text-slate-800">{result.gaps.length} compliance gaps</span> identified — click any row to see recommended remediation
                       </p>
                       <div className="flex gap-2">
                         {(['Critical', 'High', 'Medium', 'Low'] as const).map(s => {
@@ -492,20 +630,23 @@ export default function ScannerPage() {
                           if (!n) return null;
                           const c = severityConfig(s);
                           return (
-                            <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.badge}`}>{n} {s}</span>
+                            <span key={s} className="text-xs px-2.5 py-1 rounded-full font-bold"
+                              style={{ background: c.badge, color: c.badgeText, border: `1px solid ${c.badgeBorder}` }}>
+                              {n} {s}
+                            </span>
                           );
                         })}
                       </div>
                     </div>
-                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(15,23,42,0.08)' }}>
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
-                            <th className="px-4 py-3 text-left font-semibold w-8">#</th>
-                            <th className="px-4 py-3 text-left font-semibold w-28">Severity</th>
-                            <th className="px-4 py-3 text-left font-semibold">Gap Identified</th>
-                            <th className="px-4 py-3 text-left font-semibold">Category</th>
-                            <th className="px-4 py-3 text-left font-semibold">DPDP Reference</th>
+                          <tr style={{ background: '#f8fafc', borderBottom: '1px solid rgba(15,23,42,0.08)' }}>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400 w-10">#</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400 w-28">Severity</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Gap Identified</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Category</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Reference</th>
                             <th className="px-4 py-3 w-8" />
                           </tr>
                         </thead>
@@ -522,25 +663,35 @@ export default function ScannerPage() {
             {/* Security Headers */}
             {activeTab === 'headers' && (
               <div className="p-5">
-                <p className="text-sm text-slate-500 mb-4">
-                  HTTP response headers detected on <span className="font-medium text-slate-700">{result.domain}</span>. These headers form part of the technical security measures required under <span className="font-medium">DPDP Section 8</span>.
+                <p className="text-sm text-slate-500 mb-5">
+                  HTTP response headers detected on <span className="font-semibold text-slate-700">{result.domain}</span>. These headers form part of technical security measures required under <span className="font-semibold text-slate-700">DPDP Section 8</span>.
                 </p>
                 <div className="space-y-2">
                   {result.securityHeaders.map((h: SecurityHeader) => (
-                    <div key={h.header} className={`flex items-start gap-4 p-3.5 rounded-xl border ${h.present ? 'border-green-200 bg-green-50' : 'border-red-100 bg-red-50'}`}>
+                    <div key={h.header}
+                      className="flex items-start gap-4 p-3.5 rounded-xl"
+                      style={{
+                        border: h.present ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(239,68,68,0.12)',
+                        background: h.present ? 'rgba(34,197,94,0.04)' : 'rgba(239,68,68,0.04)',
+                      }}>
                       {h.present
-                        ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-                        : <XCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />}
+                        ? <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#22c55e' }} />
+                        : <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-sm font-semibold text-slate-700">{h.header}</span>
+                          <span className="font-mono text-sm font-bold text-slate-800">{h.header}</span>
                           {h.present && h.value && (
                             <span className="font-mono text-xs text-slate-400 truncate max-w-xs">{h.value}</span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5">{h.description}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{h.description}</div>
                       </div>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${h.present ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                        style={{
+                          background: h.present ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
+                          color: h.present ? '#16a34a' : '#dc2626',
+                          border: h.present ? '1px solid rgba(34,197,94,0.2)' : '1px solid rgba(239,68,68,0.2)',
+                        }}>
                         {h.present ? 'Present' : 'Missing'}
                       </span>
                     </div>
@@ -551,25 +702,37 @@ export default function ScannerPage() {
           </div>
 
           {/* CTA */}
-          <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-2xl p-6 text-white flex items-center justify-between gap-4">
-            <div>
-              <div className="font-bold text-lg mb-1">Need help closing these gaps?</div>
-              <div className="text-indigo-200 text-sm">Use the DPDP Comply platform to manage consents, rights requests, breach incidents, and your full compliance programme.</div>
-            </div>
-            <div className="flex gap-3 flex-shrink-0">
-              <button
-                onClick={() => { setResult(null); setDomain(''); setEmail(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className="bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
-              >
-                Scan Another
-              </button>
+          <div className="rounded-2xl p-6 relative overflow-hidden"
+            style={{ background: 'linear-gradient(135deg, #0c1322 0%, #1a2744 60%, #0c1f3f 100%)' }}>
+            {/* Glow */}
+            <div className="absolute top-0 right-0 w-48 h-48 opacity-10 pointer-events-none"
+              style={{ background: 'radial-gradient(circle, #0ea5e9 0%, transparent 70%)', transform: 'translate(20%, -20%)' }} />
+            <div className="relative flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className="w-4 h-4" style={{ color: '#38bdf8' }} />
+                  <span className="font-black text-white text-lg">Need help closing these gaps?</span>
+                </div>
+                <div className="text-sm" style={{ color: 'rgba(148,163,184,0.8)' }}>
+                  Use the DPDP Comply platform to manage consents, rights requests, breach incidents, and your full compliance programme.
+                </div>
+              </div>
+              <div className="flex gap-3 flex-shrink-0">
+                <button
+                  onClick={() => { setResult(null); setDomain(''); setEmail(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  className="text-sm font-semibold px-4 py-2.5 rounded-xl transition-all"
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.12)' }}
+                >
+                  Scan Another
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Disclaimer */}
-          <p className="text-xs text-slate-400 text-center pb-4">
+          <p className="text-xs text-slate-400 text-center pb-4 leading-relaxed">
             This automated assessment provides indicative readiness signals based on publicly accessible content and HTTP headers.
-            It does not constitute legal advice. A full DPDP compliance programme requires legal review, internal audits, and implementation of technical & organisational measures.
+            It does not constitute legal advice. A full DPDP compliance programme requires legal review, internal audits, and implementation of technical &amp; organisational measures.
           </p>
         </div>
       )}
