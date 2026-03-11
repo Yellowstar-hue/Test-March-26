@@ -126,7 +126,7 @@ function CategoryCard({ cat }: { cat: CategoryResult }) {
       >
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
           style={{ background: 'rgba(14,165,233,0.08)' }}>
-          <CategoryIcon id={cat.id} className="w-4.5 h-4.5" style={{ color: '#0ea5e9' } as React.CSSProperties} />
+          <CategoryIcon id={cat.id} className="w-4.5 h-4.5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
@@ -472,8 +472,7 @@ export default function ScannerPage() {
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ background: item.bonus ? 'rgba(139,92,246,0.08)' : 'rgba(14,165,233,0.08)' }}>
-                    <CategoryIcon id={item.id} className="w-4.5 h-4.5"
-                      style={{ color: item.bonus ? '#8b5cf6' : '#0ea5e9' } as React.CSSProperties} />
+                    <CategoryIcon id={item.id} className="w-4.5 h-4.5" />
                   </div>
                   {item.bonus
                     ? <span className="text-xs font-bold px-2 py-0.5 rounded-full"
