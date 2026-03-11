@@ -23,12 +23,12 @@ function scoreColor(p: number) {
 }
 
 function complianceCfg(level: string) {
-  const m: Record<string, { c: string; bg: string; border: string; label: string }> = {
-    'Excellent':         { c: '#22d3a5', bg: 'rgba(34,211,165,0.1)',  border: 'rgba(34,211,165,0.3)',  label: '✦ Excellent' },
-    'Good':              { c: '#818cf8', bg: 'rgba(129,140,248,0.1)', border: 'rgba(129,140,248,0.3)', label: '✦ Good' },
-    'Moderate':          { c: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)',  label: '⚡ Moderate' },
-    'Needs Improvement': { c: '#f97316', bg: 'rgba(249,115,22,0.1)',  border: 'rgba(249,115,22,0.3)',  label: '⚠ Needs Work' },
-    'Critical':          { c: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.3)',   label: '✕ Critical' },
+  const m: Record<string, { c: string; bg: string; border: string; label: string; cta: string; ctaUrgency: 'low' | 'medium' | 'high' | 'critical' | null }> = {
+    'Excellent':                   { c: '#22d3a5', bg: 'rgba(34,211,165,0.1)',  border: 'rgba(34,211,165,0.3)',  label: '✦ Excellent',                    cta: '',                                            ctaUrgency: null     },
+    'Attention Required':          { c: '#818cf8', bg: 'rgba(129,140,248,0.1)', border: 'rgba(129,140,248,0.3)', label: '⚠ Attention Required',            cta: 'Schedule a DPDP Compliance Review',           ctaUrgency: 'low'    },
+    'Needs Immediate Improvement': { c: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)',  label: '⚡ Needs Immediate Improvement',   cta: 'Get a Detailed Gap Analysis Now',             ctaUrgency: 'medium' },
+    'High Risk':                   { c: '#f97316', bg: 'rgba(249,115,22,0.1)',  border: 'rgba(249,115,22,0.3)',  label: '🚨 High Non-Compliance Risk',      cta: 'Speak to a DPDP Specialist Urgently',         ctaUrgency: 'high'   },
+    'Critical':                    { c: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.3)',   label: '✕ Critical Non-Compliance',        cta: 'Get Immediate Expert Intervention',           ctaUrgency: 'critical' },
   };
   return m[level] ?? m['Critical'];
 }
@@ -475,6 +475,46 @@ export default function DPDPGapX() {
                 {unverifiedCats > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(129,140,248,0.12)', border: '1px solid rgba(129,140,248,0.25)', color: '#818cf8' }}>{unverifiedCats} Cannot Verify</span>}
                 {result.bonusScore > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' }}>+{result.bonusScore} Bonus pts</span>}
               </div>
+              {/* Urgency CTA — shown for any non-Excellent result */}
+              {cc.cta && (
+                <div style={{ marginBottom: 14 }}>
+                  <a
+                    href="https://dpdpone.in/contact"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: cc.ctaUrgency === 'critical' || cc.ctaUrgency === 'high' ? '11px 20px' : '9px 18px',
+                      borderRadius: 10, textDecoration: 'none', fontSize: 13, fontWeight: 700,
+                      background: cc.ctaUrgency === 'critical'
+                        ? 'linear-gradient(135deg,#ef4444,#dc2626)'
+                        : cc.ctaUrgency === 'high'
+                        ? 'linear-gradient(135deg,#f97316,#ea6a0a)'
+                        : cc.ctaUrgency === 'medium'
+                        ? 'linear-gradient(135deg,#f59e0b,#d97706)'
+                        : 'linear-gradient(135deg,#7c3aed,#9f5ef5)',
+                      color: 'white',
+                      boxShadow: cc.ctaUrgency === 'critical'
+                        ? '0 4px 20px rgba(239,68,68,0.45)'
+                        : cc.ctaUrgency === 'high'
+                        ? '0 4px 20px rgba(249,115,22,0.45)'
+                        : cc.ctaUrgency === 'medium'
+                        ? '0 4px 20px rgba(245,158,11,0.4)'
+                        : '0 4px 20px rgba(124,58,237,0.4)',
+                    }}
+                  >
+                    <Zap size={13} />
+                    {cc.cta}
+                    <ExternalLink size={11} style={{ opacity: 0.75 }} />
+                  </a>
+                  {(cc.ctaUrgency === 'critical' || cc.ctaUrgency === 'high') && (
+                    <div style={{ marginTop: 7, fontSize: 11, color: cc.c, fontWeight: 600 }}>
+                      Organisations at this compliance level face significant penalty exposure under DPDP Act 2023.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#7070a0', flexWrap: 'wrap' as const }}>
                 <span>⏱ {(result.durationMs / 1000).toFixed(1)}s scan</span>
                 <span>📄 {result.pagesScanned.length} page{result.pagesScanned.length !== 1 ? 's' : ''} analysed</span>

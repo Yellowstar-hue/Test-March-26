@@ -139,7 +139,7 @@ export interface ScanResult {
   overallScore: number;
   maxBaseScore: number;
   bonusScore: number;
-  complianceLevel: 'Critical' | 'Needs Improvement' | 'Moderate' | 'Good' | 'Excellent';
+  complianceLevel: 'Critical' | 'High Risk' | 'Needs Immediate Improvement' | 'Attention Required' | 'Excellent';
   categories: CategoryResult[];
   gaps: GapItem[];
   securityHeaders: SecurityHeader[];
@@ -763,9 +763,9 @@ export async function POST(request: NextRequest) {
     const pct = (overallScore / maxBaseScore) * 100;
     const complianceLevel =
       pct >= 85 ? 'Excellent'
-      : pct >= 70 ? 'Good'
-      : pct >= 50 ? 'Moderate'
-      : pct >= 30 ? 'Needs Improvement'
+      : pct >= 70 ? 'Attention Required'
+      : pct >= 50 ? 'Needs Immediate Improvement'
+      : pct >= 30 ? 'High Risk'
       : 'Critical';
 
     // Only include gaps that are actually confirmed (not cannotVerify)
