@@ -78,6 +78,13 @@ export interface CheckResult {
   found: boolean;
   points: number;
   detail: string;
+  /**
+   * true = scanner could not verify this control due to scan limitations
+   * (bot protection, dynamic rendering, login-gated content).
+   * This is NOT a confirmed gap — the control may be fully compliant
+   * via internal systems, application layers, or backend mechanisms.
+   */
+  cannotVerify?: boolean;
 }
 
 export interface CategoryResult {
@@ -87,8 +94,10 @@ export interface CategoryResult {
   description: string;
   maxScore: number;
   score: number;
+  /** Max score from checks that could actually be verified (used for fair scoring) */
+  verifiableMax: number;
   isBonus: boolean;
-  status: 'pass' | 'partial' | 'fail';
+  status: 'pass' | 'partial' | 'fail' | 'unverified';
   checks: CheckResult[];
 }
 
@@ -98,6 +107,19 @@ export interface GapItem {
   severity: 'Critical' | 'High' | 'Medium' | 'Low';
   dpdpSection: string;
   recommendation: string;
+  /**
+   * true = this gap could not be confirmed via public scan.
+   * The organisation may already be compliant via internal controls.
+   * Requires manual verification or stakeholder interview to determine.
+   */
+  cannotVerify?: boolean;
+}
+
+export interface InterviewItem {
+  label: string;
+  dpdpSection: string;
+  description: string;
+  artifactsNeeded: string;
 }
 
 export interface SecurityHeader {
@@ -125,7 +147,63 @@ export interface ScanResult {
   scanMethod: ScanMethod;
   limitedScanReason?: string;
   pagesScanned: string[];
+  /** Controls that require stakeholder interview — cannot be assessed via public scan */
+  interviewItems: InterviewItem[];
+  /** Number of checks that could not be verified due to scan limitations */
+  unverifiedChecksCount: number;
 }
+
+// ---- Interview items: always required regardless of scan quality ----
+const INTERVIEW_ITEMS: InterviewItem[] = [
+  {
+    label: 'Data Processing Agreements (DPAs) with all processors & sub-processors',
+    dpdpSection: 'Section 8(2)',
+    description: 'All third-party vendors and processors must be bound by a DPA ensuring DPDP-compliant data handling, sub-processing restrictions, and breach notification obligations.',
+    artifactsNeeded: 'Vendor contracts, DPA templates, processor register, sub-processor list',
+  },
+  {
+    label: 'Record of Processing Activities (ROPA) maintained and updated',
+    dpdpSection: 'DPDP Rules',
+    description: 'A comprehensive, current inventory of all personal data processing activities, data flows, purposes, and retention schedules across the organisation.',
+    artifactsNeeded: 'ROPA spreadsheet or GRC tool export, data flow diagrams, processing register',
+  },
+  {
+    label: 'Data Protection Impact Assessment (DPIA) for high-risk processing activities',
+    dpdpSection: 'DPDP Rules',
+    description: 'DPIA must be conducted before initiating processing activities that are likely to result in high risk to data principals (e.g., profiling, large-scale sensitive data, new technologies).',
+    artifactsNeeded: 'DPIA reports, risk assessment documentation, DPO sign-off records, mitigation evidence',
+  },
+  {
+    label: 'Employee and staff DPDP Act awareness training completed',
+    dpdpSection: 'DPDP Rules',
+    description: 'All employees who handle personal data should have completed formal DPDP Act training. Role-based training for HR, IT, legal, and customer-facing teams is expected.',
+    artifactsNeeded: 'Training completion records, course materials, awareness program documentation',
+  },
+  {
+    label: 'Data breach notification and incident response procedure documented and tested',
+    dpdpSection: 'Section 8(6)',
+    description: 'A documented, tested procedure for detecting, containing, investigating, and notifying the Data Protection Board and affected data principals within the prescribed timeline.',
+    artifactsNeeded: 'Incident response runbook, breach notification templates, tabletop exercise records, escalation matrix',
+  },
+  {
+    label: 'Consent records with timestamps and audit trail maintained',
+    dpdpSection: 'Section 6',
+    description: 'Demonstrable evidence that valid consent was obtained before processing commenced, with the ability to produce consent records to the Data Protection Board on demand.',
+    artifactsNeeded: 'Consent management system (CMP) records, consent logs, withdrawal audit trails, consent version history',
+  },
+  {
+    label: 'Data retention enforcement — automated deletion or anonymisation workflows',
+    dpdpSection: 'Section 8(7)',
+    description: 'Technical implementation of data deletion or anonymisation once the processing purpose is fulfilled. A written policy alone is insufficient — enforcement mechanisms must be verified.',
+    artifactsNeeded: 'Data lifecycle management documentation, scheduled deletion job logs, anonymisation procedure evidence',
+  },
+  {
+    label: 'Significant Data Fiduciary (SDF) determination and additional obligations assessment',
+    dpdpSection: 'Section 10 / DPDP Rules',
+    description: 'Assessment of whether the organisation qualifies as an SDF based on data volume, sensitivity, national security, and public order considerations — with compliance against additional SDF requirements.',
+    artifactsNeeded: 'SDF assessment report, data volume analysis, DPO appointment letter, annual DPDP audit report',
+  },
+];
 
 // ---- Helpers ----
 function matchesAny(text: string, patterns: RegExp[]): boolean {
@@ -271,115 +349,304 @@ function runAnalysis(combined: string, homeHtml: string, homeHeaders: Record<str
   };
 }
 
-function buildCategories(a: ReturnType<typeof runAnalysis>): CategoryResult[] {
+// ---- Build categories with verification awareness ----
+function buildCategories(
+  a: ReturnType<typeof runAnalysis>,
+  hasHome: boolean,
+  hasPrivacy: boolean,
+): CategoryResult[] {
+  // Determine verifiability per check type:
+  // - Homepage-specific checks (consent banner, privacy link): need homepage
+  // - Policy/privacy content checks (purposes, grievance, rights, DPO, retention): need any content
+  // - Security checks (HTTPS, headers): always verifiable (from URL + HEAD response)
+  const hasContent = hasHome || hasPrivacy;
+
+  type CheckDef = {
+    label: string; found: boolean; points: number; detail: string; cannotVerify?: boolean;
+  };
+
+  const makeCategory = (
+    id: string, name: string, dpdpSection: string, description: string,
+    maxScore: number, checks: CheckDef[], isBonus = false,
+  ): CategoryResult => {
+    const score = checks.reduce((s, c) => s + (c.found ? c.points : 0), 0);
+    const verifiableChecks = checks.filter(c => !c.cannotVerify);
+    const verifiableMax = verifiableChecks.reduce((s, c) => s + c.points, 0);
+    const verifiedScore = verifiableChecks.reduce((s, c) => s + (c.found ? c.points : 0), 0);
+
+    let status: 'pass' | 'partial' | 'fail' | 'unverified';
+    if (verifiableMax === 0) {
+      status = 'unverified';
+    } else {
+      const ratio = verifiedScore / verifiableMax;
+      status = ratio >= 0.8 ? 'pass' : ratio >= 0.4 ? 'partial' : 'fail';
+    }
+
+    return { id, name, dpdpSection, description, maxScore, score, verifiableMax, isBonus, status, checks };
+  };
+
+  const cannotVerifyHomeOnly = !hasHome;        // Checks that strictly need homepage HTML
+  const cannotVerifyContent  = !hasContent;     // Checks that need any page content
+
+  const consentDetail = (found: boolean, cv: boolean) =>
+    found ? 'Consent management mechanism or notice detected'
+    : cv ? 'Could not verify via public scan — consent mechanisms are often implemented inside the application/portal (login-gated), via a CMP loaded by JavaScript, or enforced at the backend. This does not indicate non-compliance.'
+    : 'No consent notice or CMP detected in publicly accessible page content — processing may occur without valid consent';
+
+  const withdrawalDetail = (found: boolean, cv: boolean) =>
+    found ? 'Opt-out or withdrawal mechanism found'
+    : cv ? 'Could not verify via public scan — withdrawal options are typically available in account settings, cookie preference centres, or application dashboards which require authentication to access'
+    : 'No clear withdrawal/opt-out mechanism found in publicly accessible content — required under DPDP Section 6(4)';
+
+  const privacyLinkDetail = (found: boolean, cv: boolean) =>
+    found ? 'Privacy policy or notice page accessible from homepage'
+    : cv ? 'Could not verify from homepage — privacy policy may be accessible via the application, footer links rendered by JavaScript, or a dedicated legal/policy subdomain. Manual verification recommended.'
+    : 'No privacy policy link detected on publicly accessible homepage';
+
+  const contentDetail = (found: boolean, cv: boolean, positive: string, negative: string) =>
+    found ? positive : cv ? 'Could not verify — page content was inaccessible to automated scanning. This control may be documented in the privacy policy or internal compliance documentation.' : negative;
+
   return [
-    {
-      id: 'consent', name: 'Consent Notice & Mechanism', dpdpSection: 'Section 6 & 7',
-      description: 'Freely given, specific, informed consent before processing — with an equally easy withdrawal option',
-      maxScore: 25, score: a.consentScore, isBonus: false,
-      status: a.consentScore >= 20 ? 'pass' : a.consentScore >= 10 ? 'partial' : 'fail',
-      checks: [
-        { label: 'Consent notice / CMP detected on page', found: a.consentBannerFound, points: 18, detail: a.consentBannerFound ? 'Consent management mechanism or notice detected' : 'No consent notice or CMP detected — processing may occur without valid consent' },
-        { label: 'Consent withdrawal mechanism present', found: a.withdrawalFound, points: 7, detail: a.withdrawalFound ? 'Opt-out or withdrawal mechanism found' : 'No clear withdrawal/opt-out mechanism found — required under DPDP Section 6(4)' },
-      ],
-    },
-    {
-      id: 'privacy', name: 'Privacy Notice', dpdpSection: 'Section 5',
-      description: 'Accessible notice detailing categories of data collected, processing purposes, and data principal rights',
-      maxScore: 20, score: a.privacyScore, isBonus: false,
-      status: a.privacyScore >= 16 ? 'pass' : a.privacyScore >= 8 ? 'partial' : 'fail',
-      checks: [
-        { label: 'Privacy notice / policy page linked', found: a.privacyLinked, points: 8, detail: a.privacyLinked ? 'Privacy policy or notice page accessible' : 'No privacy policy link detected on homepage' },
-        { label: 'Data processing purposes documented', found: a.purposeFound, points: 6, detail: a.purposeFound ? 'Purpose(s) of data collection described in policy' : 'Processing purposes not clearly stated' },
-        { label: 'Data categories identified', found: a.dataCategoryFound, points: 6, detail: a.dataCategoryFound ? 'Categories of personal data collected are identified' : 'No data category documentation found in policy' },
-      ],
-    },
-    {
-      id: 'grievance', name: 'Grievance Redressal', dpdpSection: 'Section 13',
-      description: 'Designated grievance officer with an accessible complaint mechanism for data principals',
-      maxScore: 15, score: a.grievanceScore, isBonus: false,
-      status: a.grievanceScore >= 12 ? 'pass' : a.grievanceScore >= 7 ? 'partial' : 'fail',
-      checks: [
-        { label: 'Grievance officer / nodal officer designated', found: a.grievanceFound, points: 8, detail: a.grievanceFound ? 'Grievance officer or nodal officer reference found' : 'No grievance officer found — mandatory under DPDP Section 13' },
-        { label: 'Complaint mechanism accessible', found: a.complaintMechFound, points: 7, detail: a.complaintMechFound ? 'Complaint process or form identified' : 'No accessible complaint mechanism found' },
-      ],
-    },
-    {
-      id: 'security', name: 'Data Security Measures', dpdpSection: 'Section 8',
-      description: 'Technical safeguards including transport encryption and HTTP security headers to protect personal data',
-      maxScore: 15, score: a.securityScore, isBonus: false,
-      status: a.securityScore >= 12 ? 'pass' : a.securityScore >= 7 ? 'partial' : 'fail',
-      checks: [
-        { label: 'HTTPS / TLS transport encryption active', found: a.securityScore >= 8, points: 8, detail: a.securityScore >= 8 ? 'Site served over HTTPS — data in transit is encrypted' : 'Site not served over HTTPS — personal data exposed to interception' },
-        { label: `HTTP security headers present (${a.presentSecHeaders.length}/6)`, found: a.presentSecHeaders.length >= 2, points: 7, detail: a.presentSecHeaders.length > 0 ? `Detected: ${a.presentSecHeaders.join(', ')}` : 'No security headers detected' },
-      ],
-    },
-    {
-      id: 'rights', name: 'Data Principal Rights', dpdpSection: 'Section 11–14',
-      description: 'Mechanisms enabling data principals to exercise rights of access, correction, erasure, and portability',
-      maxScore: 10, score: a.rightsScore, isBonus: false,
-      status: a.rightsScore >= 8 ? 'pass' : a.rightsScore >= 4 ? 'partial' : 'fail',
-      checks: [
-        { label: 'Rights (access, correct, erase, nominate) communicated', found: a.rightsMentioned, points: 5, detail: a.rightsMentioned ? 'Data principal rights referenced in policy or pages' : 'No mention of data principal rights' },
-        { label: 'Rights request mechanism available', found: a.rightsMechanism, points: 5, detail: a.rightsMechanism ? 'Request form, email, or portal for exercising rights found' : 'No mechanism found for data principals to submit rights requests' },
-      ],
-    },
-    {
-      id: 'dpo', name: 'Data Fiduciary Contact / DPO', dpdpSection: 'DPDP Rules',
-      description: 'Designated Data Protection Officer with published contact details',
-      maxScore: 10, score: a.dpoScore, isBonus: false,
-      status: a.dpoScore >= 8 ? 'pass' : a.dpoScore >= 4 ? 'partial' : 'fail',
-      checks: [
-        { label: 'Data Protection Officer (DPO) designated', found: a.dpoFound, points: 7, detail: a.dpoFound ? 'DPO or privacy officer reference found on site' : 'No DPO or privacy officer found' },
-        { label: 'Privacy contact details published', found: a.contactFound, points: 3, detail: a.contactFound ? 'Dedicated privacy contact email or details available' : 'No dedicated privacy contact email found (e.g., privacy@, dpo@)' },
-      ],
-    },
-    {
-      id: 'retention', name: 'Data Retention Policy', dpdpSection: 'Section 8(7)',
-      description: 'Defined retention periods — personal data must be erased once the processing purpose is fulfilled',
-      maxScore: 5, score: a.retentionScore, isBonus: false,
-      status: a.retentionScore === 5 ? 'pass' : 'fail',
-      checks: [
-        { label: 'Data retention periods or storage duration stated', found: a.retentionFound, points: 5, detail: a.retentionFound ? 'Retention period or data storage duration mentioned in policy' : 'No data retention policy found — required under Section 8(7)' },
-      ],
-    },
-    {
-      id: 'children', name: "Children's Data Protection", dpdpSection: 'Section 9',
-      description: 'Verifiable parental consent and age-appropriate safeguards for processing data of minors',
-      maxScore: 10, score: a.childrenScore, isBonus: true,
-      status: a.childrenScore >= 5 ? 'pass' : 'fail',
-      checks: [
-        { label: "Children's data provisions / parental consent referenced", found: a.childrenFound, points: 10, detail: a.childrenFound ? 'Children data protection provisions found on site' : 'No provisions for children data protection detected' },
-      ],
-    },
-    {
-      id: 'crossborder', name: 'Cross-border Data Transfer', dpdpSection: 'Section 16',
-      description: 'Notice and applicable safeguards when personal data is transferred outside India',
-      maxScore: 5, score: a.crossBorderScore, isBonus: true,
-      status: a.crossBorderScore >= 5 ? 'pass' : 'fail',
-      checks: [
-        { label: 'Cross-border / international transfer provisions mentioned', found: a.crossBorderFound, points: 5, detail: a.crossBorderFound ? 'International data transfer provisions referenced' : 'No cross-border transfer disclosure found' },
-      ],
-    },
+    makeCategory('consent', 'Consent Notice & Mechanism', 'Section 6 & 7',
+      'Freely given, specific, informed consent before processing — with an equally easy withdrawal option',
+      25, [
+        {
+          label: 'Consent notice / CMP detected on page', found: a.consentBannerFound, points: 18,
+          cannotVerify: cannotVerifyHomeOnly,
+          detail: consentDetail(a.consentBannerFound, cannotVerifyHomeOnly),
+        },
+        {
+          label: 'Consent withdrawal mechanism present', found: a.withdrawalFound, points: 7,
+          cannotVerify: cannotVerifyContent,
+          detail: withdrawalDetail(a.withdrawalFound, cannotVerifyContent),
+        },
+      ]
+    ),
+    makeCategory('privacy', 'Privacy Notice', 'Section 5',
+      'Accessible notice detailing categories of data collected, processing purposes, and data principal rights',
+      20, [
+        {
+          label: 'Privacy notice / policy page linked', found: a.privacyLinked, points: 8,
+          cannotVerify: cannotVerifyHomeOnly,
+          detail: privacyLinkDetail(a.privacyLinked, cannotVerifyHomeOnly),
+        },
+        {
+          label: 'Data processing purposes documented', found: a.purposeFound, points: 6,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.purposeFound, cannotVerifyContent,
+            'Purpose(s) of data collection described in accessible policy content',
+            'Processing purposes not clearly stated in publicly accessible pages'),
+        },
+        {
+          label: 'Data categories identified', found: a.dataCategoryFound, points: 6,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.dataCategoryFound, cannotVerifyContent,
+            'Categories of personal data collected are identified',
+            'No data category documentation found in accessible policy content'),
+        },
+      ]
+    ),
+    makeCategory('grievance', 'Grievance Redressal', 'Section 13',
+      'Designated grievance officer with an accessible complaint mechanism for data principals',
+      15, [
+        {
+          label: 'Grievance officer / nodal officer designated', found: a.grievanceFound, points: 8,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.grievanceFound, cannotVerifyContent,
+            'Grievance officer or nodal officer reference found in accessible content',
+            'No grievance officer found in publicly accessible pages — mandatory under DPDP Section 13'),
+        },
+        {
+          label: 'Complaint mechanism accessible', found: a.complaintMechFound, points: 7,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.complaintMechFound, cannotVerifyContent,
+            'Complaint process or form identified in accessible content',
+            'No accessible complaint mechanism found in publicly available pages'),
+        },
+      ]
+    ),
+    makeCategory('security', 'Data Security Measures', 'Section 8',
+      'Technical safeguards including transport encryption and HTTP security headers to protect personal data',
+      15, [
+        {
+          // Security checks are ALWAYS verifiable (from URL scheme + HEAD response)
+          label: 'HTTPS / TLS transport encryption active', found: a.securityScore >= 8, points: 8,
+          cannotVerify: false,
+          detail: a.securityScore >= 8
+            ? 'Site served over HTTPS — data in transit is encrypted'
+            : 'Site not served over HTTPS — personal data exposed to interception',
+        },
+        {
+          label: `HTTP security headers present (${a.presentSecHeaders.length}/6)`,
+          found: a.presentSecHeaders.length >= 2, points: 7,
+          cannotVerify: false,
+          detail: a.presentSecHeaders.length > 0
+            ? `Detected: ${a.presentSecHeaders.join(', ')}`
+            : 'No security headers detected',
+        },
+      ]
+    ),
+    makeCategory('rights', 'Data Principal Rights', 'Section 11–14',
+      'Mechanisms enabling data principals to exercise rights of access, correction, erasure, and portability',
+      10, [
+        {
+          label: 'Rights (access, correct, erase, nominate) communicated', found: a.rightsMentioned, points: 5,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.rightsMentioned, cannotVerifyContent,
+            'Data principal rights referenced in accessible policy or pages',
+            'No mention of data principal rights in publicly accessible content'),
+        },
+        {
+          label: 'Rights request mechanism available', found: a.rightsMechanism, points: 5,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.rightsMechanism, cannotVerifyContent,
+            'Request form, email, or portal for exercising rights found',
+            'No mechanism found for data principals to submit rights requests'),
+        },
+      ]
+    ),
+    makeCategory('dpo', 'Data Fiduciary Contact / DPO', 'DPDP Rules',
+      'Designated Data Protection Officer with published contact details',
+      10, [
+        {
+          label: 'Data Protection Officer (DPO) designated', found: a.dpoFound, points: 7,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.dpoFound, cannotVerifyContent,
+            'DPO or privacy officer reference found in accessible content',
+            'No DPO or privacy officer found in publicly accessible pages'),
+        },
+        {
+          label: 'Privacy contact details published', found: a.contactFound, points: 3,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.contactFound, cannotVerifyContent,
+            'Dedicated privacy contact email or details available',
+            'No dedicated privacy contact email found (e.g., privacy@, dpo@)'),
+        },
+      ]
+    ),
+    makeCategory('retention', 'Data Retention Policy', 'Section 8(7)',
+      'Defined retention periods — personal data must be erased once the processing purpose is fulfilled',
+      5, [
+        {
+          label: 'Data retention periods or storage duration stated', found: a.retentionFound, points: 5,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.retentionFound, cannotVerifyContent,
+            'Retention period or data storage duration mentioned in accessible policy',
+            'No data retention policy found in publicly accessible pages — required under Section 8(7)'),
+        },
+      ]
+    ),
+    makeCategory('children', "Children's Data Protection", 'Section 9',
+      'Verifiable parental consent and age-appropriate safeguards for processing data of minors',
+      10, [
+        {
+          label: "Children's data provisions / parental consent referenced", found: a.childrenFound, points: 10,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.childrenFound, cannotVerifyContent,
+            "Children data protection provisions found in accessible content",
+            "No provisions for children data protection detected in publicly accessible pages"),
+        },
+      ], true
+    ),
+    makeCategory('crossborder', 'Cross-border Data Transfer', 'Section 16',
+      'Notice and applicable safeguards when personal data is transferred outside India',
+      5, [
+        {
+          label: 'Cross-border / international transfer provisions mentioned', found: a.crossBorderFound, points: 5,
+          cannotVerify: cannotVerifyContent,
+          detail: contentDetail(a.crossBorderFound, cannotVerifyContent,
+            'International data transfer provisions referenced in accessible content',
+            'No cross-border transfer disclosure found in publicly accessible pages'),
+        },
+      ], true
+    ),
   ];
 }
 
 function buildGaps(categories: CategoryResult[], a: ReturnType<typeof runAnalysis>): GapItem[] {
   const gaps: GapItem[] = [];
-  if (!a.consentBannerFound) gaps.push({ category: 'Consent Notice & Mechanism', gap: 'No consent notice or CMP detected on homepage', severity: 'Critical', dpdpSection: 'Section 6, 7', recommendation: 'Implement a Consent Management Platform (CMP) or a consent notice that presents specific, purpose-based consent requests before any personal data processing begins' });
-  if (!a.withdrawalFound) gaps.push({ category: 'Consent Notice & Mechanism', gap: 'No consent withdrawal mechanism found', severity: 'High', dpdpSection: 'Section 6(4)', recommendation: 'Provide an equally easy mechanism for data principals to withdraw consent — add a preference centre, cookie settings, or opt-out link' });
-  if (!a.privacyLinked) gaps.push({ category: 'Privacy Notice', gap: 'No privacy notice or policy page linked from homepage', severity: 'Critical', dpdpSection: 'Section 5', recommendation: 'Publish a comprehensive Privacy Notice prominently linked from the footer, covering data categories, processing purposes, retention periods, and data principal rights' });
-  if (!a.purposeFound) gaps.push({ category: 'Privacy Notice', gap: 'Specific data processing purposes not documented', severity: 'High', dpdpSection: 'Section 5(1)(b)', recommendation: 'Clearly state the specific purpose(s) for which personal data is collected and processed — vague purposes are insufficient under DPDP' });
-  if (!a.dataCategoryFound) gaps.push({ category: 'Privacy Notice', gap: 'Categories of personal data not identified', severity: 'Medium', dpdpSection: 'Section 5', recommendation: 'List the categories of personal data collected (e.g., contact information, financial data, usage data) in your Privacy Notice' });
-  if (!a.grievanceFound) gaps.push({ category: 'Grievance Redressal', gap: 'No grievance officer designation published', severity: 'Critical', dpdpSection: 'Section 13', recommendation: 'Designate a Grievance Officer and publish their name and contact details on your website' });
-  if (!a.complaintMechFound) gaps.push({ category: 'Grievance Redressal', gap: 'No accessible complaint process or form found', severity: 'High', dpdpSection: 'Section 13', recommendation: 'Provide a clear, accessible process for data principals to file complaints — include a dedicated form, email address, or grievance portal link' });
-  if (a.securityScore < 8) gaps.push({ category: 'Data Security Measures', gap: 'HTTPS not active — personal data transmitted in plaintext', severity: 'Critical', dpdpSection: 'Section 8', recommendation: 'Enable SSL/TLS immediately and enforce HTTPS via HTTP Strict Transport Security (HSTS)' });
-  if (a.presentSecHeaders.length < 2) gaps.push({ category: 'Data Security Measures', gap: `HTTP security headers absent or insufficient (${a.presentSecHeaders.length} of 6 found)`, severity: 'Medium', dpdpSection: 'Section 8', recommendation: 'Implement HTTP security headers: Strict-Transport-Security (HSTS), Content-Security-Policy (CSP), X-Frame-Options, X-Content-Type-Options, and Referrer-Policy' });
-  if (!a.rightsMentioned) gaps.push({ category: 'Data Principal Rights', gap: 'Data principal rights not communicated on site', severity: 'High', dpdpSection: 'Section 11–14', recommendation: 'Explicitly communicate rights of data principals: right to access, correction, erasure, portability, grievance, and nomination' });
-  if (!a.rightsMechanism) gaps.push({ category: 'Data Principal Rights', gap: 'No mechanism available to exercise data rights', severity: 'High', dpdpSection: 'Section 11–14', recommendation: 'Provide a clear, accessible mechanism (form, email, portal) for data principals to submit requests to exercise their rights under the DPDP Act' });
-  if (!a.dpoFound) gaps.push({ category: 'Data Fiduciary Contact / DPO', gap: 'No Data Protection Officer or privacy contact published', severity: 'High', dpdpSection: 'DPDP Rules', recommendation: 'Designate a Data Protection Officer (required for Significant Data Fiduciaries) or a privacy contact, and publish their details' });
-  if (!a.retentionFound) gaps.push({ category: 'Data Retention Policy', gap: 'No data retention periods specified in policy', severity: 'Medium', dpdpSection: 'Section 8(7)', recommendation: 'Define and publish data retention periods for each category of personal data — data must be erased or anonymised once the purpose is fulfilled' });
   void categories;
+
+  // ---- Confirmed gaps (content checked and not found) ----
+  if (!a.consentBannerFound) gaps.push({
+    category: 'Consent Notice & Mechanism', severity: 'Critical', dpdpSection: 'Section 6, 7',
+    gap: 'No consent notice or CMP detected on publicly accessible homepage',
+    recommendation: 'Implement a Consent Management Platform (CMP) or a consent notice that presents specific, purpose-based consent requests before any personal data processing begins',
+    cannotVerify: false,
+  });
+  if (!a.withdrawalFound) gaps.push({
+    category: 'Consent Notice & Mechanism', severity: 'High', dpdpSection: 'Section 6(4)',
+    gap: 'No consent withdrawal mechanism found in publicly accessible content',
+    recommendation: 'Provide an equally easy mechanism for data principals to withdraw consent — add a preference centre, cookie settings, or opt-out link',
+    cannotVerify: false,
+  });
+  if (!a.privacyLinked) gaps.push({
+    category: 'Privacy Notice', severity: 'Critical', dpdpSection: 'Section 5',
+    gap: 'No privacy notice or policy page linked from publicly accessible homepage',
+    recommendation: 'Publish a comprehensive Privacy Notice prominently linked from the footer, covering data categories, processing purposes, retention periods, and data principal rights',
+    cannotVerify: false,
+  });
+  if (!a.purposeFound) gaps.push({
+    category: 'Privacy Notice', severity: 'High', dpdpSection: 'Section 5(1)(b)',
+    gap: 'Specific data processing purposes not documented in accessible content',
+    recommendation: 'Clearly state the specific purpose(s) for which personal data is collected and processed — vague purposes are insufficient under DPDP',
+    cannotVerify: false,
+  });
+  if (!a.dataCategoryFound) gaps.push({
+    category: 'Privacy Notice', severity: 'Medium', dpdpSection: 'Section 5',
+    gap: 'Categories of personal data not identified in publicly accessible content',
+    recommendation: 'List the categories of personal data collected (e.g., contact information, financial data, usage data) in your Privacy Notice',
+    cannotVerify: false,
+  });
+  if (!a.grievanceFound) gaps.push({
+    category: 'Grievance Redressal', severity: 'Critical', dpdpSection: 'Section 13',
+    gap: 'No grievance officer designation found in publicly accessible pages',
+    recommendation: 'Designate a Grievance Officer and publish their name and contact details on your website',
+    cannotVerify: false,
+  });
+  if (!a.complaintMechFound) gaps.push({
+    category: 'Grievance Redressal', severity: 'High', dpdpSection: 'Section 13',
+    gap: 'No accessible complaint process or form found in publicly accessible pages',
+    recommendation: 'Provide a clear, accessible process for data principals to file complaints — include a dedicated form, email address, or grievance portal link',
+    cannotVerify: false,
+  });
+  if (a.securityScore < 8) gaps.push({
+    category: 'Data Security Measures', severity: 'Critical', dpdpSection: 'Section 8',
+    gap: 'HTTPS not active — personal data transmitted in plaintext',
+    recommendation: 'Enable SSL/TLS immediately and enforce HTTPS via HTTP Strict Transport Security (HSTS)',
+    cannotVerify: false,
+  });
+  if (a.presentSecHeaders.length < 2) gaps.push({
+    category: 'Data Security Measures', severity: 'Medium', dpdpSection: 'Section 8',
+    gap: `HTTP security headers absent or insufficient (${a.presentSecHeaders.length} of 6 found)`,
+    recommendation: 'Implement HTTP security headers: Strict-Transport-Security (HSTS), Content-Security-Policy (CSP), X-Frame-Options, X-Content-Type-Options, and Referrer-Policy',
+    cannotVerify: false,
+  });
+  if (!a.rightsMentioned) gaps.push({
+    category: 'Data Principal Rights', severity: 'High', dpdpSection: 'Section 11–14',
+    gap: 'Data principal rights not communicated in publicly accessible content',
+    recommendation: 'Explicitly communicate rights of data principals: right to access, correction, erasure, portability, grievance, and nomination',
+    cannotVerify: false,
+  });
+  if (!a.rightsMechanism) gaps.push({
+    category: 'Data Principal Rights', severity: 'High', dpdpSection: 'Section 11–14',
+    gap: 'No mechanism available to exercise data rights in publicly accessible pages',
+    recommendation: 'Provide a clear, accessible mechanism (form, email, portal) for data principals to submit requests to exercise their rights under the DPDP Act',
+    cannotVerify: false,
+  });
+  if (!a.dpoFound) gaps.push({
+    category: 'Data Fiduciary Contact / DPO', severity: 'High', dpdpSection: 'DPDP Rules',
+    gap: 'No Data Protection Officer or privacy contact found in publicly accessible pages',
+    recommendation: 'Designate a Data Protection Officer (required for Significant Data Fiduciaries) or a privacy contact, and publish their details',
+    cannotVerify: false,
+  });
+  if (!a.retentionFound) gaps.push({
+    category: 'Data Retention Policy', severity: 'Medium', dpdpSection: 'Section 8(7)',
+    gap: 'No data retention periods specified in publicly accessible policy content',
+    recommendation: 'Define and publish data retention periods for each category of personal data — data must be erased or anonymised once the purpose is fulfilled',
+    cannotVerify: false,
+  });
+
   return gaps;
 }
 
@@ -404,6 +671,7 @@ export async function POST(request: NextRequest) {
 
     const pagesScanned: string[] = [];
     let homeHtml = '';
+    let privacyHtml = '';
     let homeHeaders: Record<string, string> = {};
     let httpsWorking = false;
     let fetchError: string | undefined;
@@ -443,11 +711,10 @@ export async function POST(request: NextRequest) {
         homeHeaders = headResult.headers;
         httpsWorking = headResult.isHttps || url.startsWith('https://');
         scanMethod = 'limited';
-        fetchError = 'Website blocked automated page fetching — conducting header-only & structure assessment';
-        limitedScanReason = 'The website actively blocked our scanner (likely bot protection / WAF). We analysed HTTP response headers and attempted direct-path assessment of common privacy and legal pages.';
+        fetchError = 'Website uses bot protection / WAF — conducting header-only assessment. Page content could not be scanned.';
+        limitedScanReason = 'This website actively blocked automated page fetching (likely bot protection, WAF, or dynamic rendering). HTTP response headers were analysed. Content-dependent controls (consent, privacy policy, grievance, rights, DPO, retention) could not be verified via public scan — they may be fully compliant via internal systems, application layers, or backend mechanisms.';
         pagesScanned.push(`${url} (HEAD only)`);
       } else {
-        // Just trust the URL scheme for HTTPS check
         httpsWorking = url.startsWith('https://');
         scanMethod = 'limited';
         fetchError = 'Website unreachable — unable to establish connection';
@@ -457,7 +724,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ---- Strategy 4: Probe common privacy/legal pages ----
-    let privacyHtml = '';
     if (homeHtml) {
       const privUrl = findPrivacyUrl(homeHtml, url);
       if (privUrl) {
@@ -474,21 +740,25 @@ export async function POST(request: NextRequest) {
         pagesScanned.push(`${url}/privacy (direct probe)`);
         scanMethod = 'partial';
         fetchError = 'Homepage blocked — partial assessment conducted using direct privacy/legal page probing';
-        limitedScanReason = 'Homepage could not be accessed. We directly probed common privacy and legal pages (/privacy, /privacy-policy, /terms, etc.) to conduct a partial assessment. Scores reflect content found on those pages.';
+        limitedScanReason = 'Homepage could not be accessed. We directly probed common privacy and legal pages (/privacy, /privacy-policy, /terms, etc.) to conduct a partial assessment. Consent-related checks still could not be verified as they typically require homepage access.';
       }
     }
 
     const combined = `${homeHtml} ${privacyHtml}`;
-    const a = runAnalysis(combined, homeHtml, homeHeaders, httpsWorking);
+    const hasHome    = homeHtml.length > 200;
+    const hasPrivacy = privacyHtml.length > 200;
 
-    // For limited scans: apply confidence dampening — marks uncertain checks as 0 rather than positive
-    // (We already do this naturally since consentBanner etc. won't be found in empty HTML)
-    // But for HTTPS, we CAN determine it from the URL / HEAD response
-    const categories = buildCategories(a);
+    const a = runAnalysis(combined, homeHtml, homeHeaders, httpsWorking);
+    const categories = buildCategories(a, hasHome, hasPrivacy);
+
+    // Score calculation uses verifiableMax to avoid penalising scan-blocked sites unfairly.
+    // Only checks that could actually be verified contribute to the denominator.
     const baseCategories = categories.filter(c => !c.isBonus);
-    const overallScore = baseCategories.reduce((s, c) => s + c.score, 0);
-    const maxBaseScore = baseCategories.reduce((s, c) => s + c.maxScore, 0);
-    const bonusScore = categories.filter(c => c.isBonus).reduce((s, c) => s + c.score, 0);
+    const overallScore   = baseCategories.reduce((s, c) => s + c.score, 0);
+    const maxBaseScore   = Math.max(1, baseCategories.reduce((s, c) => s + c.verifiableMax, 0));
+    const bonusScore     = categories.filter(c => c.isBonus).reduce((s, c) => s + c.score, 0);
+
+    const unverifiedChecksCount = categories.flatMap(c => c.checks).filter(ck => ck.cannotVerify).length;
 
     const pct = (overallScore / maxBaseScore) * 100;
     const complianceLevel =
@@ -498,7 +768,28 @@ export async function POST(request: NextRequest) {
       : pct >= 30 ? 'Needs Improvement'
       : 'Critical';
 
-    const gaps = buildGaps(categories, a);
+    // Only include gaps that are actually confirmed (not cannotVerify)
+    // cannotVerify checks are shown separately in the UI under "Could Not Verify"
+    const allGaps = buildGaps(categories, a);
+
+    // Filter: exclude gaps for checks that were cannotVerify in the category analysis
+    const confirmedGaps = allGaps.filter(gap => {
+      // Find which checks were cannotVerify for this category
+      const cat = categories.find(c => c.name === gap.category);
+      if (!cat) return true;
+      // If ALL checks in this category are cannotVerify, suppress the gaps
+      const allUnverified = cat.checks.every(ck => ck.cannotVerify);
+      return !allUnverified;
+    });
+
+    // Mark individual gaps as cannotVerify if their corresponding check was flagged
+    const gaps = confirmedGaps.map(gap => {
+      const cat = categories.find(c => c.name === gap.category);
+      if (!cat) return gap;
+      // Check if the corresponding checks are partially unverifiable
+      const someUnverified = cat.checks.some(ck => ck.cannotVerify && !ck.found);
+      return someUnverified ? { ...gap, cannotVerify: true } : gap;
+    });
 
     const securityHeaders: SecurityHeader[] = [
       { header: 'Strict-Transport-Security', present: !!homeHeaders['strict-transport-security'], value: homeHeaders['strict-transport-security'] || '', description: 'Forces HTTPS connections and prevents downgrade attacks' },
@@ -516,6 +807,8 @@ export async function POST(request: NextRequest) {
       overallScore, maxBaseScore, bonusScore, complianceLevel,
       categories, gaps, securityHeaders,
       fetchError, scanMethod, limitedScanReason, pagesScanned,
+      interviewItems: INTERVIEW_ITEMS,
+      unverifiedChecksCount,
     };
 
     return NextResponse.json(result);

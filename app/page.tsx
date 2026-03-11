@@ -5,13 +5,14 @@ import {
   Shield, Search, CheckCircle2, XCircle, ChevronDown, ChevronUp,
   Loader2, Zap, Lock, Users, FileText, Scale, Baby, Globe,
   Building2, Clock, RotateCcw, Info, ArrowRight, AlertCircle, Activity,
+  HelpCircle, MessageSquare, ExternalLink,
 } from 'lucide-react';
-import type { ScanResult, CategoryResult } from './api/scan/route';
+import type { ScanResult, CategoryResult, InterviewItem } from './api/scan/route';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 function pct(score: number, max: number) {
-  return Math.min(100, Math.round((score / max) * 100));
+  return max === 0 ? 0 : Math.min(100, Math.round((score / max) * 100));
 }
 
 function scoreColor(p: number) {
@@ -81,13 +82,13 @@ function ScoreRing({ score, max }: { score: number; max: number }) {
   const dash = (p / 100) * circ;
   return (
     <svg width={136} height={136} viewBox="0 0 136 136">
-      <circle cx={68} cy={68} r={r} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={10} />
+      <circle cx={68} cy={68} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={10} />
       <circle cx={68} cy={68} r={r} fill="none" stroke={color} strokeWidth={10}
         strokeDasharray={`${dash} ${circ - dash}`} strokeDashoffset={circ * 0.25}
         strokeLinecap="round" style={{ filter: `drop-shadow(0 0 10px ${color}90)` }} />
       <text x={68} y={63} textAnchor="middle" fill="white" fontSize={28} fontWeight="900"
         fontFamily="system-ui,-apple-system,sans-serif">{p}</text>
-      <text x={68} y={80} textAnchor="middle" fill="rgba(255,255,255,0.25)" fontSize={11}
+      <text x={68} y={80} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={11}
         fontFamily="system-ui,-apple-system,sans-serif">out of 100</text>
     </svg>
   );
@@ -99,19 +100,24 @@ function CategoryCard({ cat, expanded, onToggle }: {
   cat: CategoryResult; expanded: boolean; onToggle: () => void;
 }) {
   const Icon = CAT_ICON[cat.id] ?? Shield;
-  const p = pct(cat.score, cat.maxScore);
-  const color = scoreColor(p);
+  const p = pct(cat.score, cat.verifiableMax || cat.maxScore);
+  const color = cat.status === 'unverified' ? '#818cf8' : scoreColor(p);
   const stMap = {
-    pass:    { label: 'Compliant', c: '#22d3a5', bg: 'rgba(34,211,165,0.1)',  border: 'rgba(34,211,165,0.2)'  },
-    partial: { label: 'Partial',   c: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
-    fail:    { label: 'Gap Found', c: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.2)'  },
+    pass:       { label: 'Compliant',      c: '#22d3a5', bg: 'rgba(34,211,165,0.1)',  border: 'rgba(34,211,165,0.2)'  },
+    partial:    { label: 'Partial',        c: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.2)' },
+    fail:       { label: 'Gap Found',      c: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.2)'  },
+    unverified: { label: 'Cannot Verify',  c: '#818cf8', bg: 'rgba(129,140,248,0.1)', border: 'rgba(129,140,248,0.2)' },
   };
   const st = stMap[cat.status];
+  const borderColor = cat.status === 'fail' ? 'rgba(239,68,68,0.22)'
+    : cat.status === 'pass' ? 'rgba(34,211,165,0.15)'
+    : cat.status === 'unverified' ? 'rgba(129,140,248,0.2)'
+    : 'rgba(124,58,237,0.18)';
 
   return (
     <div style={{
       background: 'rgba(11,9,26,0.85)', backdropFilter: 'blur(12px)',
-      border: `1px solid ${cat.status === 'fail' ? 'rgba(239,68,68,0.22)' : cat.status === 'pass' ? 'rgba(34,211,165,0.15)' : 'rgba(124,58,237,0.18)'}`,
+      border: `1px solid ${borderColor}`,
       borderRadius: 14, overflow: 'hidden',
     }}>
       <button onClick={onToggle} style={{
@@ -128,63 +134,219 @@ function CategoryCard({ cat, expanded, onToggle }: {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' as const }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#dde1f0', letterSpacing: '-0.01em' }}>{cat.name}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', letterSpacing: '-0.01em' }}>{cat.name}</span>
               {cat.isBonus && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: 'rgba(124,58,237,0.18)', color: '#c4b5fd', fontWeight: 700, letterSpacing: '0.06em' }}>BONUS</span>}
             </div>
-            <div style={{ fontSize: 10, color: '#4a4a6e', fontWeight: 500, marginBottom: 10 }}>{cat.dpdpSection}</div>
+            <div style={{ fontSize: 11, color: '#7070a0', fontWeight: 500, marginBottom: 10 }}>{cat.dpdpSection}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.05)' }}>
-                <div style={{ width: `${p}%`, height: '100%', borderRadius: 2, background: color, boxShadow: `0 0 8px ${color}50` }} />
+              <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }}>
+                <div style={{ width: `${cat.status === 'unverified' ? 0 : p}%`, height: '100%', borderRadius: 2, background: color, boxShadow: `0 0 8px ${color}50` }} />
               </div>
-              <span style={{ fontSize: 11, fontWeight: 700, color, flexShrink: 0 }}>{cat.score}/{cat.maxScore}</span>
+              {cat.status === 'unverified'
+                ? <span style={{ fontSize: 10, fontWeight: 600, color: '#818cf8', flexShrink: 0 }}>—/—</span>
+                : <span style={{ fontSize: 11, fontWeight: 700, color, flexShrink: 0 }}>{cat.score}/{cat.verifiableMax || cat.maxScore}</span>
+              }
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, flexShrink: 0 }}>
             <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20, background: st.bg, border: `1px solid ${st.border}`, color: st.c }}>
               {st.label}
             </span>
-            {expanded ? <ChevronUp size={13} color="#3a3a5a" /> : <ChevronDown size={13} color="#3a3a5a" />}
+            {expanded ? <ChevronUp size={13} color="#5050a0" /> : <ChevronDown size={13} color="#5050a0" />}
           </div>
         </div>
       </button>
 
       {expanded && (
         <div style={{ padding: '0 20px 20px', borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-          <p style={{ fontSize: 12, color: '#3f3f68', lineHeight: 1.7, margin: '14px 0 14px' }}>{cat.description}</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-            {cat.checks.map((ck, i) => (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 12px', borderRadius: 9,
-                background: ck.found ? 'rgba(34,211,165,0.04)' : 'rgba(239,68,68,0.04)',
-                border: `1px solid ${ck.found ? 'rgba(34,211,165,0.12)' : 'rgba(239,68,68,0.12)'}`,
-              }}>
-                <div style={{ marginTop: 1, flexShrink: 0 }}>
-                  {ck.found ? <CheckCircle2 size={13} color="#22d3a5" /> : <XCircle size={13} color="#ef4444" />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: ck.found ? '#22d3a5' : '#ef4444', marginBottom: 2 }}>{ck.label}</div>
-                  <div style={{ fontSize: 11, color: '#3f3f68', lineHeight: 1.55 }}>{ck.detail}</div>
-                </div>
-                <span style={{ fontSize: 10, color: '#2d2d4a', flexShrink: 0, fontWeight: 500 }}>+{ck.points}pt</span>
+          <p style={{ fontSize: 12, color: '#9494bb', lineHeight: 1.75, margin: '14px 0 14px' }}>{cat.description}</p>
+
+          {/* Unverified category notice */}
+          {cat.status === 'unverified' && (
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(129,140,248,0.06)', border: '1px solid rgba(129,140,248,0.18)', marginBottom: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#818cf8', marginBottom: 5, letterSpacing: '0.08em' }}>WHY THIS COULD NOT BE VERIFIED</div>
+              <div style={{ fontSize: 12, color: '#a0a0cc', lineHeight: 1.75 }}>
+                This website blocked automated page fetching (bot protection / WAF / dynamic rendering). The controls in this category may be fully implemented via the application layer, backend systems, or internal processes — this is common for enterprise platforms.
+                <br /><strong style={{ color: '#c4b5fd' }}>This is not a confirmed gap.</strong> Manual verification or a stakeholder interview is required to assess actual compliance.
               </div>
-            ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+            {cat.checks.map((ck, i) => {
+              const isUnverified = ck.cannotVerify;
+              const bgColor = isUnverified ? 'rgba(129,140,248,0.04)' : ck.found ? 'rgba(34,211,165,0.04)' : 'rgba(239,68,68,0.04)';
+              const borderC  = isUnverified ? 'rgba(129,140,248,0.15)' : ck.found ? 'rgba(34,211,165,0.12)' : 'rgba(239,68,68,0.12)';
+              const textC    = isUnverified ? '#818cf8' : ck.found ? '#22d3a5' : '#ef4444';
+              return (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 9, padding: '11px 13px', borderRadius: 9,
+                  background: bgColor, border: `1px solid ${borderC}`,
+                }}>
+                  <div style={{ marginTop: 1, flexShrink: 0 }}>
+                    {isUnverified
+                      ? <HelpCircle size={13} color="#818cf8" />
+                      : ck.found
+                        ? <CheckCircle2 size={13} color="#22d3a5" />
+                        : <XCircle size={13} color="#ef4444" />
+                    }
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: textC, marginBottom: 3 }}>
+                      {ck.label}
+                      {isUnverified && <span style={{ fontSize: 9, fontWeight: 700, marginLeft: 7, padding: '1px 6px', borderRadius: 4, background: 'rgba(129,140,248,0.15)', color: '#818cf8' }}>CANNOT VERIFY</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9090b8', lineHeight: 1.6 }}>{ck.detail}</div>
+                  </div>
+                  <span style={{ fontSize: 10, color: isUnverified ? '#5050a0' : '#6060a0', flexShrink: 0, fontWeight: 500 }}>+{ck.points}pt</span>
+                </div>
+              );
+            })}
           </div>
-          {cat.status !== 'pass' && WHY_MATTERS[cat.id] && (
+          {cat.status !== 'pass' && cat.status !== 'unverified' && WHY_MATTERS[cat.id] && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.1)' }}>
-                <div style={{ fontSize: 9, fontWeight: 800, color: '#ef4444', marginBottom: 5, letterSpacing: '0.1em' }}>WHY THIS MATTERS</div>
-                <div style={{ fontSize: 11, color: '#4a4a6e', lineHeight: 1.7 }}>{WHY_MATTERS[cat.id]}</div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: '#ef4444', marginBottom: 6, letterSpacing: '0.1em' }}>WHY THIS MATTERS</div>
+                <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.75 }}>{WHY_MATTERS[cat.id]}</div>
               </div>
               {WHAT_TO_DO[cat.id] && (
                 <div style={{ padding: '12px 14px', borderRadius: 10, background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.12)' }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', marginBottom: 5, letterSpacing: '0.1em' }}>WHAT TO DO</div>
-                  <div style={{ fontSize: 11, color: '#4a4a6e', lineHeight: 1.7 }}>{WHAT_TO_DO[cat.id]}</div>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: '#a78bfa', marginBottom: 6, letterSpacing: '0.1em' }}>WHAT TO DO</div>
+                  <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.75 }}>{WHAT_TO_DO[cat.id]}</div>
                 </div>
               )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Interview Items Section ──────────────────────────────────────────────────
+
+function InterviewSection({ items }: { items: InterviewItem[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <MessageSquare size={14} color="#818cf8" />
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#818cf8', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>Requires Stakeholder Interview & Documentation Review</span>
+      </div>
+
+      {/* Intro box */}
+      <div style={{ padding: '16px 20px', borderRadius: 14, background: 'rgba(129,140,248,0.05)', border: '1px solid rgba(129,140,248,0.18)', marginBottom: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 9, flexShrink: 0, background: 'rgba(129,140,248,0.12)', border: '1px solid rgba(129,140,248,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MessageSquare size={15} color="#818cf8" />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#c4b5fd', marginBottom: 6, lineHeight: 1.3 }}>
+              {items.length} controls cannot be assessed via any public website scan
+            </div>
+            <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.75 }}>
+              These compliance obligations exist at the organisational, contractual, and technical implementation level.
+              A qualified DPDP auditor will assess them through stakeholder interviews, document requests, and system demonstrations.
+              Regardless of what this scan found, <strong style={{ color: '#c4b5fd' }}>every organisation must address these items</strong> to be fully DPDP compliant.
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, background: 'rgba(129,140,248,0.1)', border: '1px solid rgba(129,140,248,0.22)', color: '#a78bfa', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+        >
+          {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          {open ? 'Hide details' : `View all ${items.length} items requiring interview`}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ padding: '15px 18px', borderRadius: 11, background: 'rgba(11,9,26,0.7)', border: '1px solid rgba(129,140,248,0.12)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: 'rgba(129,140,248,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#818cf8' }}>{i + 1}</span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' as const }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#d8d4f0', lineHeight: 1.4 }}>{item.label}</span>
+                    <span style={{ fontSize: 10, color: '#7070a0', padding: '1px 7px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>{item.dpdpSection}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.7, marginBottom: 8 }}>{item.description}</div>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#818cf8', flexShrink: 0, marginTop: 1 }}>ARTIFACTS:</span>
+                    <span style={{ fontSize: 11, color: '#7878aa', lineHeight: 1.5 }}>{item.artifactsNeeded}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── CTA Banner ───────────────────────────────────────────────────────────────
+
+function CTABanner() {
+  return (
+    <div style={{
+      marginBottom: 28,
+      padding: '28px 32px',
+      borderRadius: 18,
+      background: 'linear-gradient(135deg, rgba(124,58,237,0.12) 0%, rgba(129,140,248,0.08) 50%, rgba(124,58,237,0.12) 100%)',
+      border: '1px solid rgba(124,58,237,0.3)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Glow */}
+      <div style={{ position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+      <div style={{ position: 'relative' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 15px rgba(124,58,237,0.5)' }}>
+            <Zap size={13} color="white" />
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>Ready for a Comprehensive Audit?</span>
+        </div>
+
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#f0eeff', letterSpacing: '-0.02em', lineHeight: 1.3, marginBottom: 10 }}>
+          Let&apos;s do a deep-dive Gap Analysis<br />
+          <span style={{ background: 'linear-gradient(135deg,#7c3aed,#a78bfa,#c4b5fd)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+            and make you DPDP compliant.
+          </span>
+        </div>
+
+        <div style={{ fontSize: 13, color: '#9090b8', lineHeight: 1.75, maxWidth: 560, marginBottom: 22 }}>
+          <strong style={{ color: '#c4b5fd' }}>This scan is based on publicly available information only.</strong> A proper DPDP Gap Analysis covers internal systems, data flows, vendor contracts, consent records, employee training, DPIA, incident response, and the 8 interview items listed above — areas this automated scan cannot reach.
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' as const }}>
+          <a
+            href="https://dpdpone.in/contact"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '13px 24px', borderRadius: 11, textDecoration: 'none',
+              background: 'linear-gradient(135deg,#7c3aed 0%,#9f5ef5 60%,#7c3aed 100%)',
+              color: 'white', fontSize: 13, fontWeight: 700,
+              boxShadow: '0 4px 24px rgba(124,58,237,0.45)',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            <Zap size={13} />
+            Fill this form — Get a Full DPDP Gap Analysis
+            <ExternalLink size={11} style={{ opacity: 0.7 }} />
+          </a>
+        </div>
+
+        <div style={{ marginTop: 14, fontSize: 11, color: '#5050a0', lineHeight: 1.5 }}>
+          Conducted by certified data protection professionals · Covers all controls this scan cannot reach · Legally defensible output
+        </div>
+      </div>
     </div>
   );
 }
@@ -254,28 +416,45 @@ export default function DPDPGapX() {
     const cc = complianceCfg(result.complianceLevel);
     const gaps = result.gaps;
     const filtered = gapFilter === 'all' ? gaps : gaps.filter(g => g.severity === gapFilter);
-    const crit  = gaps.filter(g => g.severity === 'Critical').length;
-    const high  = gaps.filter(g => g.severity === 'High').length;
-    const med   = gaps.filter(g => g.severity === 'Medium').length;
+    const crit   = gaps.filter(g => g.severity === 'Critical').length;
+    const high   = gaps.filter(g => g.severity === 'High').length;
+    const med    = gaps.filter(g => g.severity === 'Medium').length;
     const passed = result.categories.filter(c => c.status === 'pass' && !c.isBonus).length;
+    const unverifiedCats = result.categories.filter(c => c.status === 'unverified' && !c.isBonus).length;
 
     return (
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '36px 24px 100px' }}>
 
         {/* Top bar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg,#7c3aed,#a78bfa)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 20px rgba(124,58,237,0.5)' }}>
               <Zap size={16} color="white" />
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 800, color: '#e2e8f0', letterSpacing: '-0.02em', lineHeight: 1 }}>DPDP GapX</div>
-              <div style={{ fontSize: 9, color: '#3f3f68', marginTop: 1, letterSpacing: '0.04em' }}>DPDP ACT 2023 · GAP ANALYSIS</div>
+              <div style={{ fontSize: 9, color: '#6060a0', marginTop: 1, letterSpacing: '0.04em' }}>DPDP ACT 2023 · GAP ANALYSIS</div>
             </div>
           </div>
           <button onClick={reset} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.22)', color: '#a78bfa', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             <RotateCcw size={12} /> Scan another site
           </button>
+        </div>
+
+        {/* ── IMPORTANT DISCLAIMER at top ── */}
+        <div style={{ padding: '14px 18px', borderRadius: 12, marginBottom: 20, background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.22)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <Info size={15} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#f59e0b', marginBottom: 5, letterSpacing: '0.06em' }}>
+              IMPORTANT — READ BEFORE ACTING ON THIS REPORT
+            </div>
+            <div style={{ fontSize: 12, color: '#b0a080', lineHeight: 1.75 }}>
+              This is an <strong style={{ color: '#d4b060' }}>automated scan of publicly accessible information only.</strong>{' '}
+              It uses pattern-matching on public pages and HTTP headers — it <strong style={{ color: '#d4b060' }}>cannot audit</strong> server-side data handling, internal processes, backend systems, login-gated content, vendor contracts, or actual data flows.
+              {' '}<strong style={{ color: '#d4b060' }}>Absence of a detected element does not mean non-compliance</strong> — controls may be implemented via internal mechanisms, application layers, or backend systems.
+              {' '}Results may contain errors. For a legally defensible assessment, engage a qualified data protection professional.
+            </div>
+          </div>
         </div>
 
         {/* Score hero */}
@@ -288,19 +467,26 @@ export default function DPDPGapX() {
                 <span style={{ fontSize: 21, fontWeight: 800, color: '#eee8ff', letterSpacing: '-0.03em', wordBreak: 'break-all' as const }}>{result.domain}</span>
                 <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 13px', borderRadius: 20, background: cc.bg, border: `1px solid ${cc.border}`, color: cc.c }}>{cc.label}</span>
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 18 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const, marginBottom: 14 }}>
                 {crit  > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444' }}>{crit} Critical</span>}
                 {high  > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(249,115,22,0.12)', border: '1px solid rgba(249,115,22,0.25)', color: '#f97316' }}>{high} High</span>}
                 {med   > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(234,179,8,0.12)',  border: '1px solid rgba(234,179,8,0.25)',  color: '#eab308' }}>{med} Medium</span>}
                 {passed > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(34,211,165,0.12)', border: '1px solid rgba(34,211,165,0.25)', color: '#22d3a5' }}>{passed} Passed</span>}
+                {unverifiedCats > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(129,140,248,0.12)', border: '1px solid rgba(129,140,248,0.25)', color: '#818cf8' }}>{unverifiedCats} Cannot Verify</span>}
                 {result.bonusScore > 0 && <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 5, background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(124,58,237,0.25)', color: '#a78bfa' }}>+{result.bonusScore} Bonus pts</span>}
               </div>
-              <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#2d2d4a', flexWrap: 'wrap' as const }}>
+              <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#7070a0', flexWrap: 'wrap' as const }}>
                 <span>⏱ {(result.durationMs / 1000).toFixed(1)}s scan</span>
                 <span>📄 {result.pagesScanned.length} page{result.pagesScanned.length !== 1 ? 's' : ''} analysed</span>
                 <span>📅 {new Date(result.scanTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                 <span style={{ textTransform: 'capitalize' }}>🔍 {result.scanMethod} scan</span>
               </div>
+              {/* Score note for limited scans */}
+              {result.unverifiedChecksCount > 0 && (
+                <div style={{ marginTop: 10, fontSize: 11, color: '#818cf8', lineHeight: 1.5 }}>
+                  ⚠ Score based on {result.maxBaseScore} verifiable points — {result.unverifiedChecksCount} check{result.unverifiedChecksCount !== 1 ? 's' : ''} could not be verified via public scan and may be compliant
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -311,10 +497,10 @@ export default function DPDPGapX() {
             <AlertCircle size={14} color="#f97316" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#f97316', marginBottom: 4 }}>Scan Limitation Detected</div>
-              <div style={{ fontSize: 11, color: '#3f3f68', lineHeight: 1.65 }}>{result.fetchError}</div>
-              {result.limitedScanReason && <div style={{ fontSize: 11, color: '#2d2d4a', marginTop: 5, lineHeight: 1.65 }}>{result.limitedScanReason}</div>}
-              <div style={{ fontSize: 11, color: '#2d2d4a', marginTop: 5, lineHeight: 1.65, fontStyle: 'italic' }}>
-                For websites that block automated access, we strongly recommend a manual audit by a qualified compliance professional.
+              <div style={{ fontSize: 12, color: '#b08050', lineHeight: 1.7 }}>{result.fetchError}</div>
+              {result.limitedScanReason && <div style={{ fontSize: 12, color: '#9090b8', marginTop: 6, lineHeight: 1.7 }}>{result.limitedScanReason}</div>}
+              <div style={{ fontSize: 12, color: '#7070a0', marginTop: 6, lineHeight: 1.7, fontStyle: 'italic' }}>
+                For websites that restrict automated access, a manual audit by a qualified compliance professional is strongly recommended.
               </div>
             </div>
           </div>
@@ -339,7 +525,10 @@ export default function DPDPGapX() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <AlertCircle size={14} color="#f97316" />
               <span style={{ fontSize: 11, fontWeight: 800, color: '#f97316', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>Gap Remediation Roadmap</span>
-              <span style={{ fontSize: 10, color: '#2d2d4a', marginLeft: 4 }}>— prioritised by severity</span>
+              <span style={{ fontSize: 11, color: '#7070a0', marginLeft: 4 }}>— prioritised by severity</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#8080a8', lineHeight: 1.7, marginBottom: 12, padding: '10px 14px', borderRadius: 9, background: 'rgba(249,115,22,0.04)', border: '1px solid rgba(249,115,22,0.1)' }}>
+              These are gaps confirmed in publicly accessible content. Controls may be implemented differently in your internal systems — indicate which are already addressed via your organisation&apos;s processes when engaging with a DPDP auditor.
             </div>
             <div style={{ display: 'flex', gap: 5, marginBottom: 14, flexWrap: 'wrap' as const }}>
               {(['all', 'Critical', 'High', 'Medium'] as const).map(sev => {
@@ -348,7 +537,7 @@ export default function DPDPGapX() {
                 const active = gapFilter === sev;
                 const c = sev === 'all' ? '#64748b' : sevCfg(sev).c;
                 return (
-                  <button key={sev} onClick={() => setGapFilter(sev)} style={{ padding: '5px 13px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1px solid ${active ? c + '55' : 'rgba(255,255,255,0.06)'}`, background: active ? `${c}15` : 'transparent', color: active ? c : '#2d2d4a' }}>
+                  <button key={sev} onClick={() => setGapFilter(sev)} style={{ padding: '5px 13px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: `1px solid ${active ? c + '55' : 'rgba(255,255,255,0.06)'}`, background: active ? `${c}15` : 'transparent', color: active ? c : '#8080a8' }}>
                     {sev === 'all' ? 'All gaps' : sev} ({count})
                   </button>
                 );
@@ -362,15 +551,15 @@ export default function DPDPGapX() {
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                       <div style={{ width: 7, height: 7, borderRadius: '50%', background: sc.c, flexShrink: 0, marginTop: 5, boxShadow: `0 0 8px ${sc.c}80` }} />
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5, flexWrap: 'wrap' as const }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6, flexWrap: 'wrap' as const }}>
                           <span style={{ fontSize: 11, fontWeight: 800, color: sc.c }}>{gap.severity}</span>
-                          <span style={{ fontSize: 10, color: '#3f3f68', padding: '1px 7px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>{gap.dpdpSection}</span>
-                          <span style={{ fontSize: 10, color: '#2d2d4a' }}>{gap.category}</span>
+                          <span style={{ fontSize: 10, color: '#8080a8', padding: '1px 7px', borderRadius: 4, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>{gap.dpdpSection}</span>
+                          <span style={{ fontSize: 10, color: '#7070a0' }}>{gap.category}</span>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#c0bade', marginBottom: 7, lineHeight: 1.4 }}>{gap.gap}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#d0ccee', marginBottom: 8, lineHeight: 1.45 }}>{gap.gap}</div>
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                          <ArrowRight size={11} color="#7c3aed" style={{ flexShrink: 0, marginTop: 2 }} />
-                          <div style={{ fontSize: 11, color: '#3f3f68', lineHeight: 1.65 }}>{gap.recommendation}</div>
+                          <ArrowRight size={11} color="#7c3aed" style={{ flexShrink: 0, marginTop: 3 }} />
+                          <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.7 }}>{gap.recommendation}</div>
                         </div>
                       </div>
                     </div>
@@ -386,7 +575,7 @@ export default function DPDPGapX() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
             <Lock size={14} color="#7c3aed" />
             <span style={{ fontSize: 11, fontWeight: 800, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>HTTP Security Headers</span>
-            <span style={{ fontSize: 10, color: '#2d2d4a' }}>DPDP Section 8 — Technical Safeguards</span>
+            <span style={{ fontSize: 11, color: '#7070a0' }}>DPDP Section 8 — Technical Safeguards</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(255px, 1fr))', gap: 7 }}>
             {result.securityHeaders.map(h => (
@@ -395,29 +584,37 @@ export default function DPDPGapX() {
                   {h.present ? <CheckCircle2 size={12} color="#22d3a5" /> : <XCircle size={12} color="#ef4444" />}
                   <span style={{ fontSize: 10, fontWeight: 700, color: h.present ? '#22d3a5' : '#ef4444', fontFamily: 'monospace' }}>{h.header}</span>
                 </div>
-                <div style={{ fontSize: 10, color: '#2d2d4a', lineHeight: 1.55 }}>{h.description}</div>
-                {h.present && h.value && <div style={{ marginTop: 5, fontSize: 9, color: '#1e1e36', fontFamily: 'monospace', wordBreak: 'break-all' as const }}>{h.value.substring(0, 50)}{h.value.length > 50 ? '…' : ''}</div>}
+                <div style={{ fontSize: 11, color: '#8080a8', lineHeight: 1.6 }}>{h.description}</div>
+                {h.present && h.value && <div style={{ marginTop: 5, fontSize: 9, color: '#6060a0', fontFamily: 'monospace', wordBreak: 'break-all' as const }}>{h.value.substring(0, 50)}{h.value.length > 50 ? '…' : ''}</div>}
               </div>
             ))}
           </div>
         </div>
 
-        {/* Disclaimer */}
-        <div style={{ padding: '18px 22px', borderRadius: 14, background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.12)' }}>
+        {/* Interview items section */}
+        {result.interviewItems && result.interviewItems.length > 0 && (
+          <InterviewSection items={result.interviewItems} />
+        )}
+
+        {/* CTA banner */}
+        <CTABanner />
+
+        {/* Full Disclaimer at bottom */}
+        <div style={{ padding: '20px 24px', borderRadius: 14, background: 'rgba(124,58,237,0.04)', border: '1px solid rgba(124,58,237,0.12)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <Info size={14} color="#7c3aed" style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: '#7c3aed', marginBottom: 8, letterSpacing: '0.08em' }}>DISCLAIMER — PLEASE READ BEFORE ACTING ON THIS REPORT</div>
-              <div style={{ fontSize: 11, color: '#3f3f68', lineHeight: 1.85 }}>
-                This is a <strong style={{ color: '#5a5a8a' }}>basic, automated gap analysis</strong> based solely on publicly accessible information from your website. This tool uses pattern-matching on publicly available pages and HTTP response headers — it <strong style={{ color: '#5a5a8a' }}>cannot audit</strong> server-side data handling, internal processes, backend systems, vendor contracts, or actual data flows.
+              <div style={{ fontSize: 10, fontWeight: 800, color: '#7c3aed', marginBottom: 8, letterSpacing: '0.08em' }}>FULL DISCLAIMER</div>
+              <div style={{ fontSize: 12, color: '#9090b8', lineHeight: 1.85 }}>
+                This is a <strong style={{ color: '#b0b0d8' }}>basic, automated gap analysis</strong> based solely on publicly accessible information from your website. This tool uses pattern-matching on publicly available pages and HTTP response headers — it <strong style={{ color: '#b0b0d8' }}>cannot audit</strong> server-side data handling, internal processes, backend systems, vendor contracts, consent records, or actual data flows.
                 <br /><br />
-                Scores reflect only what is detectable from public-facing content at the time of scanning. The absence of a detected element does not guarantee non-compliance, and the presence of detected patterns does not guarantee full compliance. <strong style={{ color: '#5a5a8a' }}>Results may contain errors. Actual compliance may significantly differ.</strong>
+                Scores reflect only what is detectable from public-facing content at the time of scanning. The absence of a detected element does not guarantee non-compliance — many controls are implemented via internal systems, application layers, or backend mechanisms that are not visible to automated scanners. Enterprise platforms often implement compliance controls in ways that are not detectable from a public homepage scan. <strong style={{ color: '#b0b0d8' }}>Results may contain errors. Actual compliance may significantly differ.</strong>
                 <br /><br />
-                If we were unable to scan your website (due to bot protection, WAF rules, or access restrictions), scores reflect only what could be technically verified — treat them as indicative, not definitive.
+                If we were unable to scan your website (due to bot protection, WAF rules, or access restrictions), scores reflect only what could be technically verified — treat them as indicative, not definitive. Score is calculated based on verifiable checks only and does not penalise for controls that could not be assessed.
                 <br /><br />
-                For a <strong style={{ color: '#a78bfa' }}>comprehensive, legally defensible DPDP compliance assessment</strong> — covering internal policies, vendor contracts, data flow mapping, consent records, DPIA processes, and full technical audits — engage a qualified data protection professional. A comprehensive gap analysis will be conducted in a thorough manner by certified professionals, covering areas this automated scan cannot reach.
+                For a <strong style={{ color: '#a78bfa' }}>comprehensive, legally defensible DPDP compliance assessment</strong> — covering internal policies, vendor contracts, data flow mapping, consent records, DPIA processes, employee training, and full technical audits — engage a qualified data protection professional.
                 <br /><br />
-                <span style={{ color: '#2d2d4a' }}>This report does not constitute legal advice. Results are based on public information as of {new Date(result.scanTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.</span>
+                <span style={{ color: '#7070a0' }}>This report does not constitute legal advice. Results are based on public information as of {new Date(result.scanTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}.</span>
               </div>
             </div>
           </div>
@@ -447,15 +644,15 @@ export default function DPDPGapX() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
             {SCAN_STEPS.map((step, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: i <= scanStep ? 1 : 0.15, transition: 'opacity 0.5s ease' }}>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: i <= scanStep ? 1 : 0.18, transition: 'opacity 0.5s ease' }}>
                 <div style={{ flexShrink: 0, width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {i < scanStep
                     ? <CheckCircle2 size={13} color="#22d3a5" />
                     : i === scanStep
                     ? <Loader2 size={13} color="#7c3aed" className="spin" />
-                    : <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', margin: '4px auto' }} />}
+                    : <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', margin: '4px auto' }} />}
                 </div>
-                <span style={{ fontSize: 12, color: i < scanStep ? '#22d3a5' : i === scanStep ? '#a78bfa' : '#1a1a2e' }}>{step}</span>
+                <span style={{ fontSize: 12, color: i < scanStep ? '#22d3a5' : i === scanStep ? '#a78bfa' : '#3a3a6a' }}>{step}</span>
               </div>
             ))}
           </div>
@@ -492,16 +689,25 @@ export default function DPDPGapX() {
           </span>
         </h1>
 
-        <p style={{ fontSize: 15, color: '#3f3f68', lineHeight: 1.75, maxWidth: 480, margin: '0 auto 36px' }}>
+        <p style={{ fontSize: 15, color: '#8080a8', lineHeight: 1.75, maxWidth: 480, margin: '0 auto 28px' }}>
           Instant, automated gap analysis against India&apos;s{' '}
           <span style={{ color: '#7c3aed', fontWeight: 600 }}>Digital Personal Data Protection Act 2023</span>.
           Enter any website URL — we&apos;ll check 9 critical compliance areas and tell you exactly where the gaps are.
         </p>
 
+        {/* Scan scope notice on landing */}
+        <div style={{ padding: '12px 16px', borderRadius: 10, marginBottom: 20, background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.18)', textAlign: 'left', display: 'flex', gap: 9, alignItems: 'flex-start', backdropFilter: 'blur(8px)' }}>
+          <Info size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+          <div style={{ fontSize: 12, color: '#a09060', lineHeight: 1.7 }}>
+            <span style={{ color: '#c0a860', fontWeight: 700 }}>Public-information scan only.</span>
+            {' '}This tool analyses publicly accessible pages. Controls implemented via internal systems, application layers, or backend processes cannot be detected — their absence in this report does not mean non-compliance. Results may contain errors and are not a substitute for a professional DPDP audit.
+          </div>
+        </div>
+
         {/* URL input */}
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <div style={{ position: 'absolute', left: 17, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
-            <Search size={16} color="#3f3f68" />
+            <Search size={16} color="#5050a0" />
           </div>
           <input
             ref={inputRef} type="url" value={url} autoFocus
@@ -531,7 +737,7 @@ export default function DPDPGapX() {
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 32,
           cursor: url.trim() ? 'pointer' : 'not-allowed',
           background: url.trim() ? 'linear-gradient(135deg,#7c3aed 0%,#9f5ef5 60%,#7c3aed 100%)' : 'rgba(124,58,237,0.12)',
-          color: url.trim() ? 'white' : '#2d2d4a',
+          color: url.trim() ? 'white' : '#4040a0',
           boxShadow: url.trim() ? '0 4px 24px rgba(124,58,237,0.4)' : 'none',
         }}>
           <Zap size={15} />
@@ -540,7 +746,7 @@ export default function DPDPGapX() {
 
         {/* Checks grid */}
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#2d2d4a', letterSpacing: '0.1em', marginBottom: 12, textTransform: 'uppercase' as const }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#5050a0', letterSpacing: '0.1em', marginBottom: 12, textTransform: 'uppercase' as const }}>
             9 DPDP Act 2023 areas checked
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
@@ -558,21 +764,11 @@ export default function DPDPGapX() {
               <div key={label} style={{ padding: '12px 13px', borderRadius: 10, textAlign: 'left', background: 'rgba(8,6,26,0.6)', border: '1px solid rgba(124,58,237,0.1)', display: 'flex', alignItems: 'flex-start', gap: 9, backdropFilter: 'blur(8px)' }}>
                 <Icon size={13} color="#7c3aed" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: '#7a7aaa', lineHeight: 1.3 }}>{label}</div>
-                  <div style={{ fontSize: 9, color: '#2d2d4a', marginTop: 2 }}>{sec}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#9090c0', lineHeight: 1.3 }}>{label}</div>
+                  <div style={{ fontSize: 9, color: '#5050a0', marginTop: 2 }}>{sec}</div>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-
-        {/* Disclaimer note */}
-        <div style={{ padding: '14px 17px', borderRadius: 11, background: 'rgba(8,6,26,0.6)', border: '1px solid rgba(124,58,237,0.1)', textAlign: 'left', display: 'flex', gap: 9, alignItems: 'flex-start', backdropFilter: 'blur(8px)' }}>
-          <Info size={13} color="#3f3f68" style={{ flexShrink: 0, marginTop: 1 }} />
-          <div style={{ fontSize: 11, color: '#2d2d4a', lineHeight: 1.75 }}>
-            <span style={{ color: '#3f3f68', fontWeight: 600 }}>Basic gap analysis · Publicly available information only.</span>
-            {' '}This tool scans publicly accessible pages using automated pattern-matching. It cannot access internal systems or configurations. Results may contain errors and are not a substitute for a professional DPDP audit.
-            {' '}<span style={{ color: '#3f3f68' }}>A comprehensive gap analysis will be conducted in a thorough manner by qualified professionals.</span>
           </div>
         </div>
       </div>
